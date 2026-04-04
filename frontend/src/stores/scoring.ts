@@ -31,6 +31,7 @@ export interface Participant {
   order: number
   description: string
   photo: string | null
+  college?: string
 }
 
 export interface JudgeInfo {
@@ -285,8 +286,20 @@ export const useScoringStore = defineStore('scoring', () => {
       body: JSON.stringify({ password }),
     })
     if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.error || '验证失败')
+      // 尝试解析 JSON 错误，如果失败则使用状态文本
+      let errorMessage = '验证失败'
+      try {
+        const contentType = res.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          const err = await res.json()
+          errorMessage = err.error || err.message || '验证失败'
+        } else {
+          errorMessage = res.statusText || `请求失败 (${res.status})`
+        }
+      } catch {
+        errorMessage = res.statusText || `请求失败 (${res.status})`
+      }
+      throw new Error(errorMessage)
     }
     isAdmin.value = true
     adminPassword.value = password

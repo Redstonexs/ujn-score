@@ -292,6 +292,7 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
+                <th class="col-college">学院</th>
                 <th class="col-score">您的评分</th>
               </tr>
             </thead>
@@ -306,31 +307,16 @@ function goBack() {
                 </td>
                 <td class="col-name">
                   <div class="participant-info">
-                    <div class="photo-wrapper">
-                      <img
-                        v-if="p.photo"
-                        :src="p.photo"
-                        class="participant-photo"
-                      />
-                      <div v-else class="photo-placeholder">
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                          <circle cx="12" cy="7" r="4" />
-                        </svg>
-                      </div>
-                    </div>
                     <div class="participant-details">
                       <div class="participant-name">{{ p.name }}</div>
-                      <div v-if="p.description" class="participant-desc">
-                        {{ p.description }}
-                      </div>
                     </div>
                   </div>
+                </td>
+                <td class="col-college">
+                  <span v-if="p.college" class="college-badge">{{
+                    p.college
+                  }}</span>
+                  <span v-else class="college-empty">-</span>
                 </td>
                 <td class="col-score">
                   <div class="score-display">
@@ -383,6 +369,7 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
+                <th class="col-college">学院</th>
                 <th class="col-score">分数</th>
               </tr>
             </thead>
@@ -397,31 +384,16 @@ function goBack() {
                 </td>
                 <td class="col-name">
                   <div class="participant-info">
-                    <div class="photo-wrapper">
-                      <img
-                        v-if="p.photo"
-                        :src="p.photo"
-                        class="participant-photo"
-                      />
-                      <div v-else class="photo-placeholder">
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                          <circle cx="12" cy="7" r="4" />
-                        </svg>
-                      </div>
-                    </div>
                     <div class="participant-details">
                       <div class="participant-name">{{ p.name }}</div>
-                      <div v-if="p.description" class="participant-desc">
-                        {{ p.description }}
-                      </div>
                     </div>
                   </div>
+                </td>
+                <td class="col-college">
+                  <span v-if="p.college" class="college-badge">{{
+                    p.college
+                  }}</span>
+                  <span v-else class="college-empty">-</span>
                 </td>
                 <td class="col-score">
                   <div class="score-input-wrapper">
@@ -582,7 +554,7 @@ function goBack() {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(24, 144, 255, 0.1);
+  background: white;
   padding: 14px 20px;
   border-radius: var(--radius-md);
   margin-bottom: 20px;
@@ -659,7 +631,36 @@ function goBack() {
 }
 
 .col-score {
-  width: 140px;
+  width: 180px;
+}
+
+.col-college {
+  width: 260px;
+  text-align: center;
+}
+
+.college-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(24, 144, 255, 0.1) 0%,
+    rgba(102, 126, 234, 0.1) 100%
+  );
+  color: var(--primary-color);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid rgba(24, 144, 255, 0.2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.college-empty {
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .participant-info {

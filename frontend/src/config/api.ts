@@ -1,4 +1,7 @@
-export const API_BASE_URL = "";
+// 根据环境自动选择 API 基础 URL
+// 生产环境：使用相对路径（前后端同域部署）
+// 开发环境：使用空字符串，通过 Vite 代理转发到后端
+export const API_BASE_URL = import.meta.env.PROD ? "" : "";
 export function resolveAssetUrl(url?: string | null) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
@@ -33,6 +36,13 @@ export const API = {
   adminImport: `${API_BASE_URL}/api/admin/import/`,
   adminJudgeDelete: (id: number) =>
     `${API_BASE_URL}/api/admin/judges/${id}/delete/`,
+  // 选手管理接口
+  adminParticipants: `${API_BASE_URL}/api/admin/participants/`,
+  adminParticipantDelete: (id: number) =>
+    `${API_BASE_URL}/api/admin/participants/${id}/delete/`,
+  adminParticipantUpdate: (id: number) =>
+    `${API_BASE_URL}/api/admin/participants/${id}/update/`,
+  adminClearParticipants: `${API_BASE_URL}/api/admin/participants/clear/`,
 };
 
 export default API;
