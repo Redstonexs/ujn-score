@@ -1,0 +1,8 @@
+Modified items:
+1. Fixed deployed background image loading by making API/media URLs resolve correctly.
+2. Judges can re-enter submitted categories and view their original scores in read-only mode.
+3. Score statistics page now shows per-judge, per-participant scoring status.
+4. Saving basic settings now shows rule confirmation and requires entering jndx.
+5. Added a new legal score type: integer_decimal (integers and decimals).
+6. Frontend production build completed successfully.
+7. Backend Python files passed compileall syntax check.
