@@ -4,7 +4,13 @@ import { useRouter } from "vue-router";
 import { useScoringStore } from "@/stores/scoring";
 import API, { resolveAssetUrl } from "@/config/api";
 
-type TabKey = "overview" | "settings" | "judges" | "scores" | "participants";
+type TabKey =
+  | "overview"
+  | "settings"
+  | "judges"
+  | "scores"
+  | "participants"
+  | "categories";
 
 interface ParticipantRow {
   id: number;
@@ -80,6 +86,7 @@ const qrModalVisible = ref(false);
 const qrTitle = ref("");
 const qrImageUrl = ref("");
 const qrTargetUrl = ref("");
+const qrCurrentJudge = ref<JudgeRow | null>(null);
 
 // 删除评委弹窗相关
 const deleteJudgeModalVisible = ref(false);
@@ -98,6 +105,11 @@ const clearParticipantsModalVisible = ref(false);
 const clearParticipantsConfirmPassword = ref("");
 const clearParticipantsLoading = ref(false);
 
+// 清空评委弹窗相关
+const clearJudgesModalVisible = ref(false);
+const clearJudgesConfirmPassword = ref("");
+const clearJudgesLoading = ref(false);
+
 // 选手编辑弹窗相关
 const editParticipantModalVisible = ref(false);
 const editTargetParticipant = ref<ParticipantRow | null>(null);
@@ -111,6 +123,17 @@ const editParticipantLoading = ref(false);
 
 // 选手类别筛选
 const participantCategoryFilter = ref<number | "">("");
+
+// 成绩排名排序相关
+type SortKey = "score" | "order" | null;
+type SortOrder = "asc" | "desc";
+interface SortState {
+  [categoryId: number]: {
+    key: SortKey;
+    order: SortOrder;
+  };
+}
+const sortStates = reactive<SortState>({});
 
 const DELETE_CONFIRM_PASSWORD = "jndx";
 
@@ -539,10 +562,16 @@ function getJudgeDisplayName(
   return judge.display_name || `评委${judge.id}`;
 }
 
-function openQrModal(title: string, imageUrl: string, targetUrl: string) {
+function openQrModal(
+  title: string,
+  imageUrl: string,
+  targetUrl: string,
+  judge?: JudgeRow,
+) {
   qrTitle.value = title;
   qrImageUrl.value = imageUrl;
   qrTargetUrl.value = targetUrl;
+  qrCurrentJudge.value = judge || null;
   qrModalVisible.value = true;
 }
 
@@ -551,6 +580,7 @@ function showJudgeQr(judge: JudgeRow) {
     `${judge.display_name || `评委${judge.id}`} - 评委二维码`,
     API.judgeQrcode(judge.token),
     judge.scoring_url,
+    judge,
   );
 }
 
@@ -560,6 +590,45 @@ function showAdminQr() {
 
 function closeQrModal() {
   qrModalVisible.value = false;
+  qrCurrentJudge.value = null;
+}
+
+function formatQRFileName(pattern: string, index: number, name: string) {
+  let fileName = pattern;
+  fileName = fileName.replace(/{index}/g, String(index));
+  fileName = fileName.replace(/{judge_name}/g, name);
+  fileName = fileName.replace(/{judge_display_name}/g, name);
+  fileName = fileName.replace(
+    /{site_name}/g,
+    configForm.site_name || "评分系统",
+  );
+  return fileName.endsWith(".png") ? fileName : `${fileName}.png`;
+}
+
+async function downloadCurrentQRCode() {
+  try {
+    let fileName = "二维码.png";
+
+    if (qrCurrentJudge.value) {
+      const index = judges.value.indexOf(qrCurrentJudge.value) + 1;
+      fileName = formatQRFileName(
+        judgeQrFilenamePattern.value,
+        index,
+        qrCurrentJudge.value.name,
+      );
+    } else if (qrTitle.value === "管理员入口二维码") {
+      fileName = "管理员二维码.png";
+    }
+
+    const link = document.createElement("a");
+    link.href = qrImageUrl.value;
+    link.download = fileName;
+    link.click();
+
+    alert("下载成功");
+  } catch {
+    alert("下载失败");
+  }
 }
 
 // 删除评委相关函数
@@ -701,6 +770,47 @@ async function handleClearParticipants() {
   }
 }
 
+// 清空评委相关函数
+function confirmClearJudges() {
+  clearJudgesConfirmPassword.value = "";
+  clearJudgesModalVisible.value = true;
+}
+
+function closeClearJudgesModal() {
+  clearJudgesModalVisible.value = false;
+  clearJudgesConfirmPassword.value = "";
+}
+
+async function handleClearJudges() {
+  if (clearJudgesConfirmPassword.value !== DELETE_CONFIRM_PASSWORD) {
+    alert("密码错误，请输入正确的确认密码");
+    return;
+  }
+
+  clearJudgesLoading.value = true;
+  try {
+    const res = await fetch(API.adminClearJudges, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        password: store.adminPassword,
+        clear_password: clearJudgesConfirmPassword.value,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "清空失败");
+
+    alert(data.message || "评委清空成功");
+    closeClearJudgesModal();
+    await loadJudges();
+  } catch (err: any) {
+    alert(err.message || "清空评委失败");
+  } finally {
+    clearJudgesLoading.value = false;
+  }
+}
+
 // 编辑选手相关函数
 function openEditParticipantModal(participant: ParticipantRow) {
   editTargetParticipant.value = participant;
@@ -812,6 +922,268 @@ function logout() {
   router.push({ name: "adminLogin" });
 }
 
+// 类别管理相关
+const editCategoryModalVisible = ref(false);
+const editTargetCategory = ref<any>(null);
+const editCategoryForm = reactive({
+  name: "",
+  order: 0,
+  description: "",
+});
+const editCategoryLoading = ref(false);
+
+const deleteCategoryModalVisible = ref(false);
+const deleteTargetCategory = ref<any>(null);
+const deleteCategoryConfirmPassword = ref("");
+const deleteCategoryLoading = ref(false);
+
+const createParticipantModalVisible = ref(false);
+const createParticipantForm = reactive({
+  name: "",
+  category_id: 0,
+  category_name: "",
+  order: 0,
+  college: "",
+});
+const createParticipantLoading = ref(false);
+const useNewCategory = ref(false);
+
+function openCreateParticipantModal() {
+  createParticipantForm.name = "";
+  createParticipantForm.category_id =
+    store.categories.length > 0 && store.categories[0]
+      ? store.categories[0].id
+      : 0;
+  createParticipantForm.category_name = "";
+  createParticipantForm.order = 0;
+  createParticipantForm.college = "";
+  useNewCategory.value = false;
+  createParticipantModalVisible.value = true;
+}
+
+function closeCreateParticipantModal() {
+  createParticipantModalVisible.value = false;
+}
+
+async function handleCreateParticipant() {
+  if (!createParticipantForm.name.trim()) {
+    alert("请输入选手姓名");
+    return;
+  }
+
+  if (useNewCategory.value && !createParticipantForm.category_name.trim()) {
+    alert("请输入新类别名称");
+    return;
+  }
+
+  if (!useNewCategory.value && !createParticipantForm.category_id) {
+    alert("请选择类别");
+    return;
+  }
+
+  createParticipantLoading.value = true;
+  try {
+    const body: any = {
+      name: createParticipantForm.name.trim(),
+      order: createParticipantForm.order,
+      college: createParticipantForm.college.trim(),
+    };
+
+    if (useNewCategory.value) {
+      body.category_name = createParticipantForm.category_name.trim();
+    } else {
+      body.category_id = createParticipantForm.category_id;
+    }
+
+    const res = await fetch(
+      `${API.adminParticipantCreate}?password=${encodeURIComponent(store.adminPassword)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "创建失败");
+    }
+
+    alert("选手创建成功");
+    closeCreateParticipantModal();
+    await loadParticipants();
+    await store.fetchCategories();
+  } catch (err: any) {
+    alert(err.message || "创建选手失败");
+  } finally {
+    createParticipantLoading.value = false;
+  }
+}
+
+function openEditCategoryModal(category: any) {
+  editTargetCategory.value = category;
+  editCategoryForm.name = category.name;
+  editCategoryForm.order = category.order;
+  editCategoryForm.description = category.description || "";
+  editCategoryModalVisible.value = true;
+}
+
+function closeEditCategoryModal() {
+  editCategoryModalVisible.value = false;
+  editTargetCategory.value = null;
+  editCategoryForm.name = "";
+  editCategoryForm.order = 0;
+  editCategoryForm.description = "";
+}
+
+async function handleEditCategory() {
+  if (!editTargetCategory.value) return;
+
+  if (!editCategoryForm.name.trim()) {
+    alert("请输入类别名称");
+    return;
+  }
+
+  editCategoryLoading.value = true;
+  try {
+    const res = await fetch(
+      `${API.adminCategoryUpdate(editTargetCategory.value.id)}?password=${encodeURIComponent(store.adminPassword)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editCategoryForm.name.trim(),
+          order: editCategoryForm.order,
+          description: editCategoryForm.description.trim(),
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "更新失败");
+    }
+
+    alert("类别信息更新成功");
+    closeEditCategoryModal();
+    await store.fetchCategories();
+  } catch (err: any) {
+    alert(err.message || "更新类别失败");
+  } finally {
+    editCategoryLoading.value = false;
+  }
+}
+
+const createCategoryModalVisible = ref(false);
+const createCategoryForm = reactive({
+  name: "",
+  order: 0,
+  description: "",
+});
+const createCategoryLoading = ref(false);
+
+function openCreateCategoryModal() {
+  createCategoryForm.name = "";
+  createCategoryForm.order = store.categories.length;
+  createCategoryForm.description = "";
+  createCategoryModalVisible.value = true;
+}
+
+function closeCreateCategoryModal() {
+  createCategoryModalVisible.value = false;
+}
+
+async function handleCreateCategory() {
+  if (!createCategoryForm.name.trim()) {
+    alert("请输入类别名称");
+    return;
+  }
+
+  createCategoryLoading.value = true;
+  try {
+    const res = await fetch(
+      `${API.adminCategoryCreate}?password=${encodeURIComponent(store.adminPassword)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: createCategoryForm.name.trim(),
+          order: createCategoryForm.order,
+          description: createCategoryForm.description.trim(),
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "创建失败");
+    }
+
+    alert("类别创建成功");
+    closeCreateCategoryModal();
+    await store.fetchCategories();
+  } catch (err: any) {
+    alert(err.message || "创建类别失败");
+  } finally {
+    createCategoryLoading.value = false;
+  }
+}
+
+function confirmDeleteCategory(category: any) {
+  deleteTargetCategory.value = category;
+  deleteCategoryConfirmPassword.value = "";
+  deleteCategoryModalVisible.value = true;
+}
+
+function closeDeleteCategoryModal() {
+  deleteCategoryModalVisible.value = false;
+  deleteTargetCategory.value = null;
+  deleteCategoryConfirmPassword.value = "";
+}
+
+async function handleDeleteCategory() {
+  if (!deleteTargetCategory.value) return;
+
+  if (deleteCategoryConfirmPassword.value !== DELETE_CONFIRM_PASSWORD) {
+    alert("密码错误，请输入正确的确认密码");
+    return;
+  }
+
+  deleteCategoryLoading.value = true;
+  try {
+    const res = await fetch(
+      `${API.adminCategoryDelete(deleteTargetCategory.value.id)}?password=${encodeURIComponent(store.adminPassword)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "删除失败");
+    }
+
+    alert("类别删除成功");
+    closeDeleteCategoryModal();
+    await store.fetchCategories();
+    await loadParticipants();
+  } catch (err: any) {
+    alert(err.message || "删除类别失败");
+  } finally {
+    deleteCategoryLoading.value = false;
+  }
+}
+
+function openEditParticipantModalWithNewCategory(participant: ParticipantRow) {
+  editTargetParticipant.value = participant;
+  editParticipantForm.name = participant.name;
+  editParticipantForm.category_id = participant.category_id;
+  editParticipantForm.order = participant.order;
+  editParticipantForm.college = participant.college || "";
+  editParticipantModalVisible.value = true;
+}
+
 // 获取选手的统计数据，如果没有则返回 null
 function getParticipantStat(categoryId: number, participantId: number) {
   const stats = scoresData.value?.statistics?.[categoryId] || [];
@@ -823,6 +1195,48 @@ function getParticipantRank(categoryId: number, participantId: number) {
   const stats = scoresData.value?.statistics?.[categoryId] || [];
   const index = stats.findIndex((s: any) => s.participant_id === participantId);
   return index >= 0 ? index + 1 : null;
+}
+
+// 排序相关函数
+function getSortState(categoryId: number) {
+  return sortStates[categoryId] || { key: null, order: "desc" };
+}
+
+function toggleSort(categoryId: number, key: SortKey) {
+  const current = getSortState(categoryId);
+  if (current.key === key) {
+    sortStates[categoryId] = {
+      key,
+      order: current.order === "asc" ? "desc" : "asc",
+    };
+  } else {
+    sortStates[categoryId] = { key, order: key === "score" ? "desc" : "asc" };
+  }
+}
+
+function getSortedParticipants(category: any) {
+  const participants = category.participants || [];
+  const sortState = getSortState(category.id);
+
+  if (!sortState.key) return participants;
+
+  return [...participants].sort((a, b) => {
+    if (sortState.key === "order") {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      return sortState.order === "asc" ? orderA - orderB : orderB - orderA;
+    }
+
+    if (sortState.key === "score") {
+      const statA = getParticipantStat(category.id, a.id);
+      const statB = getParticipantStat(category.id, b.id);
+      const scoreA = statA?.total ?? -Infinity;
+      const scoreB = statB?.total ?? -Infinity;
+      return sortState.order === "asc" ? scoreA - scoreB : scoreB - scoreA;
+    }
+
+    return 0;
+  });
 }
 </script>
 
@@ -888,6 +1302,11 @@ function getParticipantRank(categoryId: number, participantId: number) {
             key: 'participants',
             label: '选手管理',
             icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
+          },
+          {
+            key: 'categories',
+            label: '类别管理',
+            icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
           },
         ]"
         :key="tab.key"
@@ -1322,60 +1741,6 @@ function getParticipantRank(categoryId: number, participantId: number) {
           </div>
         </div>
 
-        <h3>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M4 7h16M4 12h16M4 17h10" />
-          </svg>
-          导入字段设置（手动输入）
-        </h3>
-        <div class="form-grid">
-          <label class="form-field">
-            <span>选手 Sheet 名称</span>
-            <input
-              v-model="configForm.participant_sheet_name"
-              class="input"
-              placeholder="选手数据"
-            />
-          </label>
-          <label class="form-field">
-            <span>类别字段名</span>
-            <input
-              v-model="configForm.category_field_name"
-              class="input"
-              placeholder="类别"
-            />
-          </label>
-          <label class="form-field">
-            <span>选手字段名</span>
-            <input
-              v-model="configForm.participant_field_name"
-              class="input"
-              placeholder="选手"
-            />
-          </label>
-          <label class="form-field">
-            <span>序号字段名</span>
-            <input
-              v-model="configForm.order_field_name"
-              class="input"
-              placeholder="序号"
-            />
-          </label>
-          <label class="form-field">
-            <span>学院字段名</span>
-            <input
-              v-model="configForm.college_field_name"
-              class="input"
-              placeholder="学院"
-            />
-          </label>
-        </div>
-
         <div
           v-if="saveMessage"
           class="message-box"
@@ -1503,22 +1868,38 @@ function getParticipantRank(categoryId: number, participantId: number) {
             />
             <small class="form-tip"
               >支持
-              {index}、{judge_id}、{judge_name}、{judge_display_name}、{site_name}、{token}</small
+              {index}、{judge_name}、{judge_display_name}、{site_name}</small
             >
           </label>
-          <button class="btn btn-primary" @click="exportAllJudgeQrcodes">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            一键导出全部二维码
-          </button>
+          <div class="button-row compact">
+            <button class="btn btn-primary" @click="exportAllJudgeQrcodes">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              一键导出全部二维码
+            </button>
+            <button class="btn btn-danger" @click="confirmClearJudges">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path
+                  d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                />
+              </svg>
+              一键清空评委
+            </button>
+          </div>
         </div>
         <div v-if="loadingJudges" class="loading-state">
           <div class="spinner"></div>
@@ -1840,10 +2221,44 @@ function getParticipantRank(categoryId: number, participantId: number) {
               <thead>
                 <tr>
                   <th class="col-rank">排名</th>
-                  <th class="col-order">序号</th>
+                  <th
+                    class="col-order sortable"
+                    :class="{
+                      active: getSortState(category.id).key === 'order',
+                    }"
+                    @click="toggleSort(category.id, 'order')"
+                  >
+                    序号
+                    <span class="sort-indicator">
+                      {{
+                        getSortState(category.id).key === "order"
+                          ? getSortState(category.id).order === "asc"
+                            ? "↑"
+                            : "↓"
+                          : ""
+                      }}
+                    </span>
+                  </th>
                   <th>选手</th>
                   <th>学院</th>
-                  <th class="col-score">统计总分</th>
+                  <th
+                    class="col-score sortable"
+                    :class="{
+                      active: getSortState(category.id).key === 'score',
+                    }"
+                    @click="toggleSort(category.id, 'score')"
+                  >
+                    统计总分
+                    <span class="sort-indicator">
+                      {{
+                        getSortState(category.id).key === "score"
+                          ? getSortState(category.id).order === "asc"
+                            ? "↑"
+                            : "↓"
+                          : ""
+                      }}
+                    </span>
+                  </th>
                   <th class="col-score">统计平均分</th>
                   <th class="col-score">原始总分</th>
                   <th class="col-score">原始平均分</th>
@@ -1852,7 +2267,7 @@ function getParticipantRank(categoryId: number, participantId: number) {
               </thead>
               <tbody>
                 <tr
-                  v-for="participant in category.participants"
+                  v-for="participant in getSortedParticipants(category)"
                   :key="participant.id"
                   :class="{
                     'top-three':
@@ -1981,20 +2396,33 @@ function getParticipantRank(categoryId: number, participantId: number) {
               >(已筛选)</span
             >
           </div>
-          <button class="btn btn-danger" @click="confirmClearParticipants">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="3 6 5 6 21 6" />
-              <path
-                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-              />
-            </svg>
-            一键清空选手
-          </button>
+          <div class="button-row">
+            <button class="btn btn-primary" @click="openCreateParticipantModal">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 4v16m8-8H4" />
+              </svg>
+              添加选手
+            </button>
+            <button class="btn btn-danger" @click="confirmClearParticipants">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path
+                  d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                />
+              </svg>
+              一键清空选手
+            </button>
+          </div>
         </div>
         <!-- 类别筛选 -->
         <div class="filter-panel">
@@ -2422,7 +2850,7 @@ function getParticipantRank(categoryId: number, participantId: number) {
             </svg>
             复制链接
           </button>
-          <a :href="qrImageUrl" download class="btn btn-outline">
+          <button class="btn btn-outline" @click="downloadCurrentQRCode">
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -2434,7 +2862,7 @@ function getParticipantRank(categoryId: number, participantId: number) {
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             下载二维码
-          </a>
+          </button>
         </div>
       </div>
     </div>
@@ -2703,6 +3131,92 @@ function getParticipantRank(categoryId: number, participantId: number) {
       </div>
     </div>
 
+    <!-- 清空评委确认弹窗 -->
+    <div
+      v-if="clearJudgesModalVisible"
+      class="modal-overlay"
+      @click.self="closeClearJudgesModal"
+    >
+      <div class="modal-card delete-modal">
+        <button class="modal-close" @click="closeClearJudgesModal">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <div class="delete-modal-header">
+          <div class="delete-warning-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+              />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <h3>确认清空所有评委</h3>
+        </div>
+        <div class="delete-modal-content">
+          <p class="delete-warning-text">
+            您即将<strong>清空所有评委</strong>，此操作不可恢复。
+          </p>
+          <p class="delete-hint-text">
+            所有评委及其评分数据将被永久删除，请谨慎操作。
+          </p>
+          <div class="delete-password-section">
+            <label class="form-field">
+              <span>请输入确认密码 <code>jndx</code> 以继续</span>
+              <input
+                v-model="clearJudgesConfirmPassword"
+                type="password"
+                class="input"
+                placeholder="请输入密码"
+                @keyup.enter="handleClearJudges"
+              />
+            </label>
+          </div>
+        </div>
+        <div class="button-row compact center delete-actions">
+          <button class="btn btn-outline" @click="closeClearJudgesModal">
+            取消
+          </button>
+          <button
+            class="btn btn-danger"
+            :disabled="
+              clearJudgesLoading ||
+              clearJudgesConfirmPassword !== DELETE_CONFIRM_PASSWORD
+            "
+            @click="handleClearJudges"
+          >
+            <span v-if="clearJudgesLoading" class="spinner"></span>
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path
+                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 0 0 1 2 2v2"
+              />
+            </svg>
+            {{ clearJudgesLoading ? "清空中..." : "确认清空" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 编辑选手弹窗 -->
     <div
       v-if="editParticipantModalVisible"
@@ -2789,6 +3303,471 @@ function getParticipantRank(categoryId: number, participantId: number) {
             </svg>
             {{ editParticipantLoading ? "保存中..." : "保存" }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建选手弹窗 -->
+    <div
+      v-if="createParticipantModalVisible"
+      class="modal-overlay"
+      @click.self="closeCreateParticipantModal"
+    >
+      <div class="modal-card">
+        <button class="modal-close" @click="closeCreateParticipantModal">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <h3 class="modal-title">添加选手</h3>
+        <div class="modal-form">
+          <label class="form-field">
+            <span>选手姓名</span>
+            <input
+              v-model="createParticipantForm.name"
+              type="text"
+              class="input"
+              placeholder="请输入选手姓名"
+              @keyup.enter="handleCreateParticipant"
+            />
+          </label>
+          <label class="form-field">
+            <span>类别选择</span>
+            <div class="switch-list inline-switch-list">
+              <label class="switch-item">
+                <div class="switch">
+                  <input v-model="useNewCategory" type="checkbox" />
+                  <span class="slider"></span>
+                </div>
+                <span class="switch-label">创建新类别</span>
+              </label>
+            </div>
+          </label>
+          <label v-if="!useNewCategory" class="form-field">
+            <span>选择类别</span>
+            <select v-model="createParticipantForm.category_id" class="input">
+              <option
+                v-for="cat in store.categories"
+                :key="cat.id"
+                :value="cat.id"
+              >
+                {{ cat.name }}
+              </option>
+            </select>
+          </label>
+          <label v-if="useNewCategory" class="form-field">
+            <span>新类别名称</span>
+            <input
+              v-model="createParticipantForm.category_name"
+              type="text"
+              class="input"
+              placeholder="请输入新类别名称"
+            />
+          </label>
+          <label class="form-field">
+            <span>序号</span>
+            <input
+              v-model.number="createParticipantForm.order"
+              type="number"
+              class="input"
+              placeholder="留空自动分配"
+            />
+          </label>
+          <label class="form-field">
+            <span>学院</span>
+            <input
+              v-model="createParticipantForm.college"
+              type="text"
+              class="input"
+              placeholder="请输入学院（可选）"
+            />
+          </label>
+        </div>
+        <div class="button-row compact">
+          <button class="btn btn-outline" @click="closeCreateParticipantModal">
+            取消
+          </button>
+          <button
+            class="btn btn-primary"
+            :disabled="
+              createParticipantLoading || !createParticipantForm.name.trim()
+            "
+            @click="handleCreateParticipant"
+          >
+            <span v-if="createParticipantLoading" class="spinner"></span>
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 4v16m8-8H4" />
+            </svg>
+            {{ createParticipantLoading ? "创建中..." : "创建" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建类别弹窗 -->
+    <div
+      v-if="createCategoryModalVisible"
+      class="modal-overlay"
+      @click.self="closeCreateCategoryModal"
+    >
+      <div class="modal-card">
+        <button class="modal-close" @click="closeCreateCategoryModal">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <h3 class="modal-title">添加类别</h3>
+        <div class="modal-form">
+          <label class="form-field">
+            <span>类别名称</span>
+            <input
+              v-model="createCategoryForm.name"
+              type="text"
+              class="input"
+              placeholder="请输入类别名称"
+              @keyup.enter="handleCreateCategory"
+            />
+          </label>
+          <label class="form-field">
+            <span>排序</span>
+            <input
+              v-model.number="createCategoryForm.order"
+              type="number"
+              class="input"
+              placeholder="数字越小越靠前"
+            />
+          </label>
+          <label class="form-field">
+            <span>描述</span>
+            <textarea
+              v-model="createCategoryForm.description"
+              class="input"
+              rows="3"
+              placeholder="类别描述（可选）"
+            ></textarea>
+          </label>
+        </div>
+        <div class="button-row compact">
+          <button class="btn btn-outline" @click="closeCreateCategoryModal">
+            取消
+          </button>
+          <button
+            class="btn btn-primary"
+            :disabled="createCategoryLoading || !createCategoryForm.name.trim()"
+            @click="handleCreateCategory"
+          >
+            <span v-if="createCategoryLoading" class="spinner"></span>
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 4v16m8-8H4" />
+            </svg>
+            {{ createCategoryLoading ? "创建中..." : "创建" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑类别弹窗 -->
+    <div
+      v-if="editCategoryModalVisible"
+      class="modal-overlay"
+      @click.self="closeEditCategoryModal"
+    >
+      <div class="modal-card">
+        <button class="modal-close" @click="closeEditCategoryModal">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <h3 class="modal-title">编辑类别</h3>
+        <div class="modal-form">
+          <label class="form-field">
+            <span>类别名称</span>
+            <input
+              v-model="editCategoryForm.name"
+              type="text"
+              class="input"
+              placeholder="请输入类别名称"
+              @keyup.enter="handleEditCategory"
+            />
+          </label>
+          <label class="form-field">
+            <span>排序</span>
+            <input
+              v-model.number="editCategoryForm.order"
+              type="number"
+              class="input"
+              placeholder="数字越小越靠前"
+            />
+          </label>
+          <label class="form-field">
+            <span>描述</span>
+            <textarea
+              v-model="editCategoryForm.description"
+              class="input"
+              rows="3"
+              placeholder="类别描述（可选）"
+            ></textarea>
+          </label>
+        </div>
+        <div class="button-row compact">
+          <button class="btn btn-outline" @click="closeEditCategoryModal">
+            取消
+          </button>
+          <button
+            class="btn btn-primary"
+            :disabled="editCategoryLoading || !editCategoryForm.name.trim()"
+            @click="handleEditCategory"
+          >
+            <span v-if="editCategoryLoading" class="spinner"></span>
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+              />
+              <path
+                d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+              />
+            </svg>
+            {{ editCategoryLoading ? "保存中..." : "保存" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除类别确认弹窗 -->
+    <div
+      v-if="deleteCategoryModalVisible"
+      class="modal-overlay"
+      @click.self="closeDeleteCategoryModal"
+    >
+      <div class="modal-card delete-modal">
+        <button class="modal-close" @click="closeDeleteCategoryModal">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <div class="delete-modal-header">
+          <div class="delete-warning-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+              />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <h3>确认删除类别</h3>
+        </div>
+        <div class="delete-modal-content">
+          <p class="delete-warning-text">
+            您即将删除类别
+            <strong>{{ deleteTargetCategory?.name }}</strong
+            >，此操作不可恢复。
+          </p>
+          <p class="delete-hint-text">
+            该类别下的所有选手及其评分数据将被永久删除，请谨慎操作。
+          </p>
+          <div class="delete-password-section">
+            <label class="form-field">
+              <span>请输入确认密码 <code>jndx</code> 以继续</span>
+              <input
+                v-model="deleteCategoryConfirmPassword"
+                type="password"
+                class="input"
+                placeholder="请输入密码"
+                @keyup.enter="handleDeleteCategory"
+              />
+            </label>
+          </div>
+        </div>
+        <div class="button-row compact center delete-actions">
+          <button class="btn btn-outline" @click="closeDeleteCategoryModal">
+            取消
+          </button>
+          <button
+            class="btn btn-danger"
+            :disabled="
+              deleteCategoryLoading ||
+              deleteCategoryConfirmPassword !== DELETE_CONFIRM_PASSWORD
+            "
+            @click="handleDeleteCategory"
+          >
+            <span v-if="deleteCategoryLoading" class="spinner"></span>
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path
+                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+              />
+            </svg>
+            {{ deleteCategoryLoading ? "删除中..." : "确认删除" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 类别管理标签页 -->
+    <div class="tab-content" v-else-if="activeTab === 'categories'">
+      <div class="section">
+        <h3>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
+          类别列表
+        </h3>
+        <div class="qr-export-panel">
+          <div class="participant-stats">
+            <span class="stat-item"
+              >共 {{ store.categories.length }} 个类别</span
+            >
+          </div>
+          <button class="btn btn-primary" @click="openCreateCategoryModal">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 4v16m8-8H4" />
+            </svg>
+            添加类别
+          </button>
+        </div>
+        <div v-if="!store.categories.length" class="empty-state">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
+          <p>暂无类别</p>
+        </div>
+        <div v-else class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>类别名称</th>
+                <th>排序</th>
+                <th>选手数量</th>
+                <th>描述</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="category in store.categories" :key="category.id">
+                <td>
+                  <span class="id-badge">{{ category.id }}</span>
+                </td>
+                <td>
+                  <strong>{{ category.name }}</strong>
+                </td>
+                <td>{{ category.order }}</td>
+                <td>{{ category.participant_count }}</td>
+                <td>{{ category.description || "-" }}</td>
+                <td>
+                  <div class="button-row compact">
+                    <button
+                      class="btn btn-outline mini-btn"
+                      @click="openEditCategoryModal(category)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+                        />
+                        <path
+                          d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+                        />
+                      </svg>
+                      编辑
+                    </button>
+                    <button
+                      class="btn btn-danger mini-btn"
+                      @click="confirmDeleteCategory(category)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path
+                          d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                        />
+                        <line x1="10" y1="11" x2="10" y2="17" />
+                        <line x1="14" y1="11" x2="14" y2="17" />
+                      </svg>
+                      删除
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -3855,6 +4834,29 @@ function getParticipantRank(categoryId: number, participantId: number) {
   position: sticky;
   top: 0;
   z-index: 2;
+}
+
+.ranking-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.3s;
+}
+
+.ranking-table th.sortable:hover {
+  background: linear-gradient(180deg, #e6f7ff 0%, #d9f7ff 100%);
+  color: var(--primary-color);
+}
+
+.ranking-table th.sortable.active {
+  background: linear-gradient(180deg, #e6f7ff 0%, #d9f7ff 100%);
+  color: var(--primary-color);
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .ranking-table td {

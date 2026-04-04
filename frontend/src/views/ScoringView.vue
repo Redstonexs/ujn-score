@@ -292,7 +292,6 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
-                <th class="col-college">学院</th>
                 <th class="col-score">您的评分</th>
               </tr>
             </thead>
@@ -306,17 +305,17 @@ function goBack() {
                   <span class="order-badge">{{ idx + 1 }}</span>
                 </td>
                 <td class="col-name">
-                  <div class="participant-info">
+                  <div class="participant-info text-center">
                     <div class="participant-details">
                       <div class="participant-name">{{ p.name }}</div>
+                      <div class="participant-college">
+                        <span v-if="p.college" class="college-badge">{{
+                          p.college
+                        }}</span>
+                        <span v-else class="college-empty">-</span>
+                      </div>
                     </div>
                   </div>
-                </td>
-                <td class="col-college">
-                  <span v-if="p.college" class="college-badge">{{
-                    p.college
-                  }}</span>
-                  <span v-else class="college-empty">-</span>
                 </td>
                 <td class="col-score">
                   <div class="score-display">
@@ -369,7 +368,6 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
-                <th class="col-college">学院</th>
                 <th class="col-score">分数</th>
               </tr>
             </thead>
@@ -383,17 +381,17 @@ function goBack() {
                   <span class="order-badge">{{ idx + 1 }}</span>
                 </td>
                 <td class="col-name">
-                  <div class="participant-info">
+                  <div class="participant-info text-center">
                     <div class="participant-details">
                       <div class="participant-name">{{ p.name }}</div>
+                      <div class="participant-college">
+                        <span v-if="p.college" class="college-badge">{{
+                          p.college
+                        }}</span>
+                        <span v-else class="college-empty">-</span>
+                      </div>
                     </div>
                   </div>
-                </td>
-                <td class="col-college">
-                  <span v-if="p.college" class="college-badge">{{
-                    p.college
-                  }}</span>
-                  <span v-else class="college-empty">-</span>
                 </td>
                 <td class="col-score">
                   <div class="score-input-wrapper">
@@ -588,11 +586,15 @@ function goBack() {
   background: #fafafa;
   padding: 16px;
   text-align: left;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.scoring-table th.col-name {
+  text-align: center;
 }
 
 .scoring-table td {
@@ -627,15 +629,14 @@ function goBack() {
   color: var(--primary-color);
   border-radius: 50%;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .col-score {
   width: 180px;
 }
 
-.col-college {
-  width: 260px;
+.col-name {
   text-align: center;
 }
 
@@ -649,7 +650,7 @@ function goBack() {
   );
   color: var(--primary-color);
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   border: 1px solid rgba(24, 144, 255, 0.2);
   max-width: 100%;
@@ -660,13 +661,18 @@ function goBack() {
 
 .college-empty {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .participant-info {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.participant-info.text-center {
+  justify-content: center;
+  text-align: center;
 }
 
 .photo-wrapper {
@@ -705,9 +711,13 @@ function goBack() {
 
 .participant-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 17px;
   color: var(--text-primary);
   margin-bottom: 4px;
+}
+
+.participant-college {
+  margin-top: 4px;
 }
 
 .participant-desc {
@@ -729,7 +739,7 @@ function goBack() {
   padding: 10px 12px;
   border: 2px solid #e8e8e8;
   border-radius: var(--radius-md);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   text-align: center;
   outline: none;
@@ -754,7 +764,7 @@ function goBack() {
 }
 
 .score-unit {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-muted);
 }
 

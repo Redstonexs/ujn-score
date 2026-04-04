@@ -38,11 +38,19 @@ export const API = {
     `${API_BASE_URL}/api/admin/judges/${id}/delete/`,
   // 选手管理接口
   adminParticipants: `${API_BASE_URL}/api/admin/participants/`,
+  adminParticipantCreate: `${API_BASE_URL}/api/admin/participants/create/`,
   adminParticipantDelete: (id: number) =>
     `${API_BASE_URL}/api/admin/participants/${id}/delete/`,
   adminParticipantUpdate: (id: number) =>
     `${API_BASE_URL}/api/admin/participants/${id}/update/`,
   adminClearParticipants: `${API_BASE_URL}/api/admin/participants/clear/`,
+  adminClearJudges: `${API_BASE_URL}/api/admin/judges/clear/`,
+  // 类别管理接口
+  adminCategoryCreate: `${API_BASE_URL}/api/admin/categories/create/`,
+  adminCategoryUpdate: (id: number) =>
+    `${API_BASE_URL}/api/admin/categories/${id}/update/`,
+  adminCategoryDelete: (id: number) =>
+    `${API_BASE_URL}/api/admin/categories/${id}/delete/`,
 };
 
 export default API;

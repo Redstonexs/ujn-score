@@ -29,6 +29,13 @@ urlpatterns = [
     path('admin/import/', views.import_data, name='import_data'),
     # 选手管理接口
     path('admin/participants/', views.get_admin_participants, name='get_admin_participants'),
+    path('admin/participants/create/', views.create_participant, name='create_participant'),
+    path('admin/participants/<int:participant_id>/update/', views.update_participant, name='update_participant'),
     path('admin/participants/<int:participant_id>/delete/', views.delete_participant, name='delete_participant'),
     path('admin/participants/clear/', views.clear_participants, name='clear_participants'),
+    path('admin/judges/clear/', views.clear_judges, name='clear_judges'),
+    # 类别管理接口
+    path('admin/categories/create/', views.create_category, name='create_category'),
+    path('admin/categories/<int:category_id>/update/', views.update_category, name='update_category'),
+    path('admin/categories/<int:category_id>/delete/', views.delete_category, name='delete_category'),
 ]

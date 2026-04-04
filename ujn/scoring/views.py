@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from openpyxl import Workbook, load_workbook
 
+from django.db import models
 from .models import Category, Judge, Participant, Score, SiteConfig
 
 logger = logging.getLogger(__name__)
@@ -475,7 +476,7 @@ def get_all_scores(request):
         result['categories'].append({
             'id': cat.id,
             'name': cat.name,
-            'participants': [{'id': p.id, 'name': p.name, 'order': p.order} for p in participants],
+            'participants': [{'id': p.id, 'name': p.name, 'order': p.order, 'college': p.college} for p in participants],
         })
 
         cat_scores = {}
@@ -1057,3 +1058,245 @@ def clear_participants(request):
     count = Participant.objects.count()
     Participant.objects.all().delete()
     return json_response({'success': True, 'message': f'已清空 {count} 名选手'})
+
+
+@csrf_exempt
+@require_POST
+def clear_judges(request):
+    """清空所有评委（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    clear_password = request.POST.get('clear_password') or request.GET.get('clear_password')
+    if not clear_password:
+        try:
+            body = json.loads(request.body)
+            clear_password = body.get('clear_password')
+        except Exception:
+            clear_password = None
+
+    clear_password = normalize_text(clear_password)
+    if not clear_password:
+        return error_response('请输入清空密码', 400)
+
+    if clear_password != CLEAR_SCORES_PASSWORD:
+        return error_response('清空密码错误', 403)
+
+    count = Judge.objects.count()
+    Judge.objects.all().delete()
+    return json_response({'success': True, 'message': f'已清空 {count} 名评委'})
+
+
+@csrf_exempt
+@require_POST
+def update_participant(request, participant_id):
+    """更新选手信息（管理员），支持自动创建新类别"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return error_response('无效的JSON格式')
+
+    try:
+        participant = Participant.objects.get(id=participant_id)
+    except Participant.DoesNotExist:
+        return error_response('选手不存在', 404)
+
+    name = normalize_text(data.get('name', ''))
+    if not name:
+        return error_response('选手姓名不能为空')
+
+    category_id = data.get('category_id')
+    category_name = normalize_text(data.get('category_name', ''))
+
+    category = None
+    if category_id:
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            pass
+
+    if not category and category_name:
+        category, _ = Category.objects.get_or_create(name=category_name, defaults={'order': 0})
+
+    if not category:
+        return error_response('请指定有效类别')
+
+    participant.name = name
+    participant.category = category
+    participant.order = to_int(data.get('order'), participant.order)
+    participant.college = normalize_text(data.get('college', ''))
+    participant.save()
+
+    return json_response({
+        'success': True,
+        'message': '选手信息已更新',
+        'participant': {
+            'id': participant.id,
+            'name': participant.name,
+            'category_id': participant.category_id,
+            'category_name': participant.category.name,
+            'order': participant.order,
+            'college': participant.college,
+        }
+    })
+
+
+@csrf_exempt
+@require_POST
+def create_participant(request):
+    """创建选手（管理员），支持自动创建新类别"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return error_response('无效的JSON格式')
+
+    name = normalize_text(data.get('name', ''))
+    if not name:
+        return error_response('选手姓名不能为空')
+
+    category_id = data.get('category_id')
+    category_name = normalize_text(data.get('category_name', ''))
+
+    category = None
+    if category_id:
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            pass
+
+    if not category and category_name:
+        category, _ = Category.objects.get_or_create(name=category_name, defaults={'order': 0})
+
+    if not category:
+        return error_response('请指定有效类别')
+
+    order = to_int(data.get('order'))
+    if order == 0:
+        max_order = Participant.objects.filter(category=category).aggregate(models.Max('order'))['order__max']
+        order = (max_order or 0) + 1
+
+    participant = Participant.objects.create(
+        name=name,
+        category=category,
+        order=order,
+        college=normalize_text(data.get('college', ''))
+    )
+
+    return json_response({
+        'success': True,
+        'message': '选手已创建',
+        'participant': {
+            'id': participant.id,
+            'name': participant.name,
+            'category_id': participant.category_id,
+            'category_name': participant.category.name,
+            'order': participant.order,
+            'college': participant.college,
+        }
+    })
+
+
+@csrf_exempt
+@require_POST
+def create_category(request):
+    """创建类别（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return error_response('无效的JSON格式')
+
+    name = normalize_text(data.get('name', ''))
+    if not name:
+        return error_response('类别名称不能为空')
+
+    if Category.objects.filter(name=name).exists():
+        return error_response('该类别已存在')
+
+    category = Category.objects.create(
+        name=name,
+        order=to_int(data.get('order'), 0),
+        description=normalize_text(data.get('description', ''))
+    )
+
+    return json_response({
+        'success': True,
+        'message': '类别已创建',
+        'category': {
+            'id': category.id,
+            'name': category.name,
+            'order': category.order,
+            'description': category.description,
+            'participant_count': 0,
+        }
+    })
+
+
+@csrf_exempt
+@require_POST
+def update_category(request, category_id):
+    """更新类别（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return error_response('无效的JSON格式')
+
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return error_response('类别不存在', 404)
+
+    name = normalize_text(data.get('name', ''))
+    if name and name != category.name:
+        if Category.objects.filter(name=name).exists():
+            return error_response('该类别名称已被使用')
+        category.name = name
+
+    if 'order' in data:
+        category.order = to_int(data.get('order'), category.order)
+
+    if 'description' in data:
+        category.description = normalize_text(data.get('description', ''))
+
+    category.save()
+
+    return json_response({
+        'success': True,
+        'message': '类别已更新',
+        'category': {
+            'id': category.id,
+            'name': category.name,
+            'order': category.order,
+            'description': category.description,
+            'participant_count': category.participants.count(),
+        }
+    })
+
+
+@csrf_exempt
+@require_POST
+def delete_category(request, category_id):
+    """删除类别（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return error_response('类别不存在', 404)
+
+    category_name = category.name
+    category.delete()
+
+    return json_response({'success': True, 'message': f'类别 {category_name} 已删除'})
