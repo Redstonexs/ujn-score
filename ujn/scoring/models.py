@@ -72,6 +72,11 @@ class SiteConfig(models.Model):
         default="备注",
         verbose_name="备注字段名",
     )
+    college_field_name = models.CharField(
+        max_length=100,
+        default="学院",
+        verbose_name="学院字段名",
+    )
 
     class Meta:
         verbose_name = "站点配置"
@@ -121,6 +126,7 @@ class Participant(models.Model):
     order = models.IntegerField(default=0, verbose_name="序号")
     description = models.TextField(blank=True, default="", verbose_name="选手描述")
     photo = models.ImageField(upload_to='participants/', blank=True, null=True, verbose_name="选手照片")
+    college = models.CharField(max_length=200, blank=True, default="", verbose_name="学院")
 
     class Meta:
         ordering = ['category__order', 'order', 'id']

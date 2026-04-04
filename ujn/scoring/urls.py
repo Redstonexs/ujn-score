@@ -27,4 +27,8 @@ urlpatterns = [
     path('admin/judges/qrcodes/export/', views.export_all_judge_qrcodes, name='export_all_judge_qrcodes'),
     path('admin/judges/<int:judge_id>/delete/', views.delete_judge, name='delete_judge'),
     path('admin/import/', views.import_data, name='import_data'),
+    # 选手管理接口
+    path('admin/participants/', views.get_admin_participants, name='get_admin_participants'),
+    path('admin/participants/<int:participant_id>/delete/', views.delete_participant, name='delete_participant'),
+    path('admin/participants/clear/', views.clear_participants, name='clear_participants'),
 ]

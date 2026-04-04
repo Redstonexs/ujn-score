@@ -111,6 +111,7 @@ def serialize_site_config(config, include_private=False):
             'category_field_name': config.category_field_name,
             'participant_field_name': config.participant_field_name,
             'order_field_name': config.order_field_name,
+            'college_field_name': config.college_field_name,
         })
     return data
 
@@ -172,6 +173,7 @@ def calculate_participant_statistics(participant, scores, exclude_extreme_scores
     return {
         'participant_id': participant.id,
         'participant_name': participant.name,
+        'college': participant.college,
         'raw_scores': [format_score_value(item) for item in scores],
         'total': format_score_value(total),
         'average': format_score_value(average),
@@ -339,6 +341,7 @@ def get_participants(request):
             'order': p.order,
             'description': p.description,
             'photo': p.photo.url if p.photo else None,
+            'college': p.college,
         })
     return json_response({'participants': result})
 
@@ -528,7 +531,7 @@ def export_excel(request):
             ws.append(['统计规则', format_score_rule_text(config)])
             ws.append([])
 
-            headers = ['评委'] + [p.name for p in participants]
+            headers = ['评委'] + [f'{p.name}({p.college})' if p.college else p.name for p in participants]
             ws.append(headers)
 
             for judge in judges:
@@ -539,7 +542,7 @@ def export_excel(request):
                 ws.append(row)
 
             ws.append([])
-            ws.append(['排名', '选手', '统计总分', '统计平均分', '原始总分', '原始平均分', '原始评分数', '有效评分数', '是否去掉极值'])
+            ws.append(['排名', '选手', '学院', '统计总分', '统计平均分', '原始总分', '原始平均分', '原始评分数', '有效评分数', '是否去掉极值'])
 
             ranking_stats = []
             for participant in participants:
@@ -556,6 +559,7 @@ def export_excel(request):
                 ws.append([
                     index,
                     stat['participant_name'],
+                    stat['college'],
                     stat['total'],
                     stat['average'],
                     stat['raw_total'],
@@ -590,10 +594,11 @@ def download_import_template(request):
         config.category_field_name,
         config.participant_field_name,
         config.order_field_name,
+        config.college_field_name,
     ])
-    participant_ws.append(['才艺组', '选手A', 1])
-    participant_ws.append(['才艺组', '选手B', 2])
-    participant_ws.append(['演讲组', '选手C', 1])
+    participant_ws.append(['才艺组', '选手A', 1, '计算机学院'])
+    participant_ws.append(['才艺组', '选手B', 2, '外国语学院'])
+    participant_ws.append(['演讲组', '选手C', 1, '经济学院'])
 
     output = io.BytesIO()
     wb.save(output)
@@ -739,6 +744,7 @@ def import_data(request):
         category_idx = participant_header_map.get(normalize_header(config.category_field_name))
         participant_idx = participant_header_map.get(normalize_header(config.participant_field_name))
         order_idx = participant_header_map.get(normalize_header(config.order_field_name))
+        college_idx = participant_header_map.get(normalize_header(config.college_field_name))
 
         if category_idx is None or participant_idx is None:
             return error_response(
@@ -774,6 +780,10 @@ def import_data(request):
             participant_order = participant_sequence_map[category_name]
             if order_idx is not None and len(values) > order_idx:
                 participant_order = to_int(values[order_idx], participant_order)
+            
+            college = ''
+            if college_idx is not None and len(values) > college_idx:
+                college = normalize_text(values[college_idx])
 
             # 检查是否已存在相同姓名、类别和序号的选手
             try:
@@ -782,12 +792,16 @@ def import_data(request):
                     category=category,
                     order=participant_order
                 )
+                if college:
+                    participant.college = college
+                    participant.save()
                 participant_created = False
             except Participant.DoesNotExist:
                 participant = Participant.objects.create(
                     name=participant_name,
                     category=category,
-                    order=participant_order
+                    order=participant_order,
+                    college=college
                 )
                 participant_created = True
                 created_participants += 1
@@ -817,6 +831,7 @@ def import_data(request):
             category_name = normalize_text(p_data.get('category', ''))
             participant_name = normalize_text(p_data.get('name', ''))
             participant_order = p_data.get('order')
+            college = normalize_text(p_data.get('college', ''))
 
             if not category_name or not participant_name:
                 continue
@@ -842,12 +857,16 @@ def import_data(request):
                     category=category,
                     order=participant_order
                 )
+                if college:
+                    participant.college = college
+                    participant.save()
                 participant_created = False
             except Participant.DoesNotExist:
                 participant = Participant.objects.create(
                     name=participant_name,
                     category=category,
-                    order=participant_order
+                    order=participant_order,
+                    college=college
                 )
                 participant_created = True
                 created_participants += 1
@@ -882,6 +901,9 @@ def import_data(request):
             participant_name = p_data if isinstance(p_data, str) else p_data.get('name', '')
             participant_name = normalize_text(participant_name)
             participant_order = p_data.get('order', idx) if isinstance(p_data, dict) else idx
+            college = ''
+            if isinstance(p_data, dict):
+                college = normalize_text(p_data.get('college', ''))
             if not participant_name:
                 continue
             # 检查是否已存在相同姓名、类别和序号的选手
@@ -891,13 +913,17 @@ def import_data(request):
                     category=category,
                     order=participant_order
                 )
+                if college:
+                    participant.college = college
+                    participant.save()
                 participant_created = False
             except Participant.DoesNotExist:
                 participant = Participant.objects.create(
                     name=participant_name,
                     category=category,
                     order=participant_order,
-                    description=p_data.get('description', '') if isinstance(p_data, dict) else ''
+                    description=p_data.get('description', '') if isinstance(p_data, dict) else '',
+                    college=college
                 )
                 participant_created = True
                 created_participants += 1
@@ -963,3 +989,71 @@ def generate_admin_qrcode(request):
         return error_response('权限不足', 403)
     config = SiteConfig.get_config()
     return build_qr_response(config.get_admin_url(), 'admin_qr.png')
+
+
+# ==================== 选手管理 ====================
+
+@require_GET
+def get_admin_participants(request):
+    """获取所有选手列表（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    participants = Participant.objects.select_related('category').all()
+    result = []
+    for p in participants:
+        result.append({
+            'id': p.id,
+            'name': p.name,
+            'category_id': p.category_id,
+            'category_name': p.category.name,
+            'order': p.order,
+            'college': p.college,
+        })
+    return json_response({'participants': result})
+
+
+@csrf_exempt
+@require_POST
+def delete_participant(request, participant_id):
+    """删除选手（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        participant = Participant.objects.get(id=participant_id)
+        participant_name = participant.name
+        participant.delete()
+        return json_response({'success': True, 'message': f'选手 {participant_name} 已删除'})
+    except Participant.DoesNotExist:
+        return error_response('选手不存在', 404)
+    except Exception as e:
+        logger.exception('删除选手失败')
+        return error_response(f'删除失败: {str(e)}', 500)
+
+
+@csrf_exempt
+@require_POST
+def clear_participants(request):
+    """清空所有选手（管理员）"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    clear_password = request.POST.get('clear_password') or request.GET.get('clear_password')
+    if not clear_password:
+        try:
+            body = json.loads(request.body)
+            clear_password = body.get('clear_password')
+        except Exception:
+            clear_password = None
+
+    clear_password = normalize_text(clear_password)
+    if not clear_password:
+        return error_response('请输入清空密码', 400)
+
+    if clear_password != CLEAR_SCORES_PASSWORD:
+        return error_response('清空密码错误', 403)
+
+    count = Participant.objects.count()
+    Participant.objects.all().delete()
+    return json_response({'success': True, 'message': f'已清空 {count} 名选手'})
