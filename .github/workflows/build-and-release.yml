@@ -37,8 +37,8 @@ jobs:
 
       - name: Checkout source code
         uses: actions/checkout@v5
-        with:
-          ref: refs/tags/${{ steps.release_tag.outputs.tag }}
+        # 【修改点 1】：移除了强制 checkout tag 的配置 (ref: refs/tags/...)
+        # 解释：手动触发时它将默认拉取你选择的执行分支（如 main）；Tag推送触发时它会拉取该 Tag。不会再报找不到 Tag 的错。
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -89,6 +89,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
+          # 【修改点 2】：指定生成 Tag 的目标 Commit。
+          # 解释：当 GitHub 发现这个 Tag 还不存在时，会自动基于当前构建的 Commit 帮你打上这个 Tag 并发布。
+          target_commitish: ${{ github.sha }}
           files: |
             ujn-score-${{ steps.release_tag.outputs.tag }}.tar.gz
             ujn-score-${{ steps.release_tag.outputs.tag }}.zip
