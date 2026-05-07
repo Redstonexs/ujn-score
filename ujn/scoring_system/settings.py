@@ -99,26 +99,26 @@ WSGI_APPLICATION = 'scoring_system.wsgi.application'
 # USE_MYSQL = os.getenv('USE_MYSQL', '').strip() == '1'
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('MYSQL_DATABASE', 'ujn'),
-        'USER': os.getenv('MYSQL_USER', 'ujn'),
-        'PASSWORD': os.environ['MYSQL_PASSWORD'] if not DEBUG else os.getenv('MYSQL_PASSWORD', 'ujn2026'),
-        'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
-        'PORT': os.getenv('MYSQL_PORT', '3307'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
-    }
-}
-
 # DATABASES = {
 #     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': os.getenv('MYSQL_DATABASE', 'ujn'),
+#         'USER': os.getenv('MYSQL_USER', 'ujn'),
+#         'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'ujn2026'),
+#         'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
+#         'PORT': os.getenv('MYSQL_PORT', '3307'),
+#         'OPTIONS': {
+#             'charset': 'utf8mb4',
+#         },
 #     }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

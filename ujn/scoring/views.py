@@ -342,8 +342,8 @@ def _verify_admin(request):
             password = body.get('password')
         except Exception:
             pass
-    # 兼容 GET 请求（仅用于需要 GET 的管理员接口如导出等）
-    if not password and request.method == 'GET':
+    # 兼容 URL 参数读取（前端一些 POST 请求会将密码放在 URL 中 ?password=xxx）
+    if not password:
         password = request.GET.get('password')
     config = SiteConfig.get_config()
     return password == config.admin_password

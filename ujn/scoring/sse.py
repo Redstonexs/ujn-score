@@ -214,7 +214,7 @@ def _verify_admin_from_request(request):
             password = body.get('password')
         except Exception:
             pass
-    if not password and request.method == 'GET':
+    if not password:
         password = request.GET.get('password')
     config = SiteConfig.get_config()
     return password == config.admin_password
