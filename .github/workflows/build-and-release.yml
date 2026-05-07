@@ -28,13 +28,6 @@ jobs:
             echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate tag exists
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" > /dev/null \
-            || (echo "Tag ${RELEASE_TAG} does not exist." && exit 1)
-
       - name: Checkout source code
         uses: actions/checkout@v5
         with:
@@ -62,6 +55,9 @@ jobs:
 
           rm -rf "$PACKAGE_ROOT" "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}.zip"
           mkdir -p "$PACKAGE_ROOT/$PACKAGE_NAME/frontend" "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
+
+          [[ -d frontend/dist && -n "$(ls -A frontend/dist)" ]] \
+            || (echo "frontend/dist is missing or empty." && exit 1)
 
           cp -r frontend/dist "$PACKAGE_ROOT/$PACKAGE_NAME/frontend/dist"
           rsync -a \
