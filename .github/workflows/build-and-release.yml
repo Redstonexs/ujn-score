@@ -61,8 +61,10 @@ jobs:
           rm -rf "$PACKAGE_ROOT" "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}.zip"
           mkdir -p "$PACKAGE_ROOT/$PACKAGE_NAME/frontend" "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
 
-          [[ -d frontend/dist && -n "$(ls -A frontend/dist)" ]] \
-            || (echo "frontend/dist is missing or empty." && exit 1)
+          if [[ ! -d frontend/dist ]] || [[ -z "$(ls -A frontend/dist)" ]]; then
+            echo "Error: frontend/dist directory is missing or empty after build step. Check frontend build logs for errors."
+            exit 1
+          fi
 
           cp -r frontend/dist "$PACKAGE_ROOT/$PACKAGE_NAME/frontend/dist"
           rsync -a \
