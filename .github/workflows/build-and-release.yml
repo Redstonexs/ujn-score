@@ -2,14 +2,10 @@ name: Build Frontend and Release Package
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main  # 更改为推送到 main 分支时自动触发
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to package and release (e.g. v1.0.0)"
-        required: true
-        type: string
+    # 移除了必填的 inputs.tag，统一使用自动生成的版本号
 
 permissions:
   contents: write
@@ -23,22 +19,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve release tag
-        id: release_tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [[ "${EVENT_NAME}" == "push" ]]; then
-            echo "tag=${REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout source code
-        uses: actions/checkout@v5
-        # 【修改点 1】：移除了强制 checkout tag 的配置 (ref: refs/tags/...)
-        # 解释：手动触发时它将默认拉取你选择的执行分支（如 main）；Tag推送触发时它会拉取该 Tag。不会再报找不到 Tag 的错。
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 必须拉取完整的提交历史和 Tags，否则无法获取上一个版本号
+
+      - name: Generate new release tag
+        id: release_tag
+        run: |
+          # 检查是否存在历史 tag
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            # 获取最新的 tag (例如 "1.0.0" 或 "v1.0.0")
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            echo "Latest tag found: $LATEST_TAG"
+            
+            # 去除可能包含的 'v' 前缀进行计算
+            VERSION=${LATEST_TAG#v}
+            
+            # 按照 '.' 分割主版本、次版本和修订号
+            IFS='.' read -r major minor patch <<< "$VERSION"
+            
+            # 容错：如果某些部分为空，则补 0
+            major=${major:-1}
+            minor=${minor:-0}
+            patch=${patch:-0}
+            
+            # 修订号加 1 (例如 1.0.0 -> 1.0.1)
+            patch=$((patch + 1))
+            NEW_TAG="${major}.${minor}.${patch}"
+          else
+            # 如果没有任何历史 tag，则从 1.0.0 开始
+            echo "No previous tags found."
+            NEW_TAG="1.0.0"
+          fi
+          
+          echo "New tag generated: $NEW_TAG"
+          # 将新生成的版本号写入 GitHub Output 供后续步骤使用
+          echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -89,9 +106,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          # 【修改点 2】：指定生成 Tag 的目标 Commit。
-          # 解释：当 GitHub 发现这个 Tag 还不存在时，会自动基于当前构建的 Commit 帮你打上这个 Tag 并发布。
           target_commitish: ${{ github.sha }}
+          # 开启自动生成 Release 描述的功能，列出 PR 和 Commit 记录
+          generate_release_notes: true 
           files: |
             ujn-score-${{ steps.release_tag.outputs.tag }}.tar.gz
             ujn-score-${{ steps.release_tag.outputs.tag }}.zip
