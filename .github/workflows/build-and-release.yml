@@ -14,6 +14,10 @@ on:
 permissions:
   contents: write
 
+env:
+  NODE_VERSION: "20"
+  PACKAGE_PREFIX: "ujn-score"
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -36,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -49,9 +53,10 @@ jobs:
       - name: Package release files
         env:
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+          PACKAGE_PREFIX: ${{ env.PACKAGE_PREFIX }}
         run: |
           PACKAGE_ROOT="release-package"
-          PACKAGE_NAME="ujn-score-${RELEASE_TAG}"
+          PACKAGE_NAME="${PACKAGE_PREFIX}-${RELEASE_TAG}"
 
           rm -rf "$PACKAGE_ROOT" "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}.zip"
           mkdir -p "$PACKAGE_ROOT/$PACKAGE_NAME/frontend" "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
