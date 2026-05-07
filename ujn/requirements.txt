@@ -4,3 +4,4 @@ openpyxl
 qrcode[pil]
 Pillow
 mysqlclient
+python-dotenv
