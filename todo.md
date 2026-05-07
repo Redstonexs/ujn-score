@@ -1,117 +1,170 @@
-# 仓库审查问题清单
+# 评分系统 - 待办事项与改进建议
 
-## 安全问题
-
-### 1. 数据库凭据默认值硬编码在代码中
-**文件**: `ujn/scoring_system/settings.py:84-96`
-**严重程度**: 高
-MySQL 数据库配置使用 `os.getenv()` 读取环境变量，但默认值 `ujn2026` 仍硬编码在代码中并提交到 Git 仓库。生产环境必须通过环境变量覆盖这些默认值。
-
-### 2. Django SECRET_KEY 硬编码
-**文件**: `ujn/scoring_system/settings.py:24`
-**严重程度**: 高
-`SECRET_KEY` 直接写死在代码中且已提交到版本库。生产环境应通过环境变量注入。
-
-### 3. DEBUG = True 在 settings 中
-**文件**: `ujn/scoring_system/settings.py:27,151`
-**严重程度**: 高
-DEBUG 模式开启且被重复设置（第27行和第151行）。生产环境必须关闭，否则会暴露敏感调试信息。
-
-### 4. ALLOWED_HOSTS = ['*']
-**文件**: `ujn/scoring_system/settings.py:29`
-**严重程度**: 高
-允许任意主机访问，存在 Host Header 攻击风险。生产环境应限制为实际域名。
-
-### 5. CORS_ALLOW_ALL_ORIGINS = True
-**文件**: `ujn/scoring_system/settings.py:31,150`
-**严重程度**: 中
-CORS 允许所有来源，且被重复设置（第31行和第150行）。生产环境应限制为前端域名。
-
-### 6. 清空密码硬编码
-**文件**: `ujn/scoring/views.py:20`
-**严重程度**: 中
-`CLEAR_SCORES_PASSWORD = 'jndx'` 硬编码在代码中。应存储在数据库或环境变量中。
-
-### 7. 管理员密码明文存储
-**文件**: `ujn/scoring/models.py:22`
-**严重程度**: 中
-`admin_password` 使用 CharField 明文存储，未做哈希处理。应使用 Django 的密码哈希机制。
-
-### 8. 管理员密码通过 URL 参数传递
-**文件**: `ujn/scoring/views.py:278,290`
-**严重程度**: 中
-`_verify_admin` 和 `get_admin_password_from_request` 从 GET 参数读取密码，密码会出现在 URL 和服务器日志中。应统一通过 POST body 或 Header 传递。
+## 项目概述
+基于 Django + Vue 3 的在线评分系统，支持管理员后台配置、Excel 导入、二维码生成与可配置统计规则。
 
 ---
 
-## 代码质量问题
+## 一、代码质量与规范
 
-### 9. settings.py 配置重复定义
-**文件**: `ujn/scoring_system/settings.py:31,150` 和 `settings.py:27,151`
-**严重程度**: 低
-`CORS_ALLOW_ALL_ORIGINS` 和 `DEBUG` 各被定义了两次。
+### 前端
+- [ ] 添加 ESLint 配置并修复 lint 错误
+- [ ] 添加 Prettier 代码格式化配置
+- [ ] 为 TypeScript 接口添加更严格的类型定义
+- [ ] 移除未使用的导入和变量
+- [ ] 统一组件命名规范（PascalCase）
 
-### 10. README 与实际配置不一致
-**文件**: `README.md`
-**严重程度**: 中
-- README.md:44 声称使用 SQLite，但 settings.py 实际配置为 MySQL
-- README.md:134-135 中部署路径写的是 `backend/`，但实际后端目录为 `ujn/`
-- README.md:254-255 中 docker-compose.yml 引用 `./backend`，与实际目录结构不符
-
-### 11. 后端目录存在无用的 package-lock.json
-**文件**: `ujn/package-lock.json`
-**严重程度**: 低
-后端 Python 项目中存在一个空的 `package-lock.json` 文件，无任何用途，应删除。
-
-### 12. get_admin_password_from_request 函数未使用
-**文件**: `ujn/scoring/views.py:289-290`
-**严重程度**: 低
-`get_admin_password_from_request` 函数定义了但从未被调用，属于死代码。
-
-### 13. 前端管理面板页面过于庞大
-**文件**: `frontend/src/views/AdminDashboardView.vue`
-**严重程度**: 中
-单个 Vue 文件超过 50KB，包含全部管理功能，难以维护。应拆分为多个子组件。
-
-### 14. tests.py 为空
-**文件**: `ujn/scoring/tests.py`
-**严重程度**: 中
-没有任何测试用例，无法保证代码质量和回归测试。
+### 后端
+- [ ] 添加 Python 代码格式化工具（如 black、ruff）
+- [ ] 为 views.py 添加更详细的 docstring
+- [ ] 将业务逻辑从 views.py 分离到 services.py
+- [ ] 添加 Django 单元测试
+- [ ] 修复 models.py 中重复的 choices 定义（如 SCORE_VALUE_TYPE_CHOICES）
 
 ---
 
-## 功能/设计问题
+## 二、安全性改进
 
-### 15. 删除评委/选手时未检查关联数据
-**文件**: `ujn/scoring/views.py:1176-1192,1497-1513`
-**严重程度**: 中
-`delete_judge` 和 `delete_participant` 直接删除记录，未检查是否有关联的评分数据。删除后评分记录会因 CASCADE 被级联删除，可能导致数据丢失。
+### 高优先级
+- [ ] **密码存储**：admin_password 当前为明文存储，建议使用 Django 的 make_password/check_password
+- [ ] **环境变量**：确保 SECRET_KEY、数据库密码等敏感信息通过环境变量配置
+- [ ] **CORS 配置**：生产环境应限制允许的源，而非允许所有来源
+- [ ] **输入验证**：加强所有 API 端点的输入验证和参数过滤
 
-### 16. clear_participants 和 clear_judges 复用清空评分密码
-**文件**: `ujn/scoring/views.py:1518-1567`
-**严重程度**: 低
-清空选手和清空评委都使用 `CLEAR_SCORES_PASSWORD`（评分清空密码），语义不清晰，应使用独立密码或统一为一个管理密码。
+### 中优先级
+- [ ] 添加 API 请求速率限制（已实现简单的基于内存的限流，建议使用 Redis）
+- [ ] 添加 JWT Token 认证替代简单的密码验证
+- [ ] 添加 SQL 注入防护检查
+- [ ] 添加 XSS 防护头部
 
-### 17. uwsgi.ini 中虚拟环境路径硬编码
-**文件**: `ujn/uwsgi.ini:12`
-**严重程度**: 低
-`home = /root/miniconda3/envs/web` 硬编码了特定服务器的路径，不便于其他环境部署。
+---
 
-### 18. 评分提交缺少频率限制
-**文件**: `ujn/scoring/views.py:486-568`
-**严重程度**: 中
-`submit_scores` 接口没有速率限制（rate limiting），可能被恶意频繁调用。
+## 三、功能完善
 
-### 19. 生产环境媒体文件通过 Django serve 提供
-**文件**: `ujn/scoring_system/urls.py:31-37`
-**严重程度**: 中
-非 DEBUG 模式下仍通过 Django 视图提供媒体文件，性能差。生产环境应由 Nginx 等 Web 服务器直接提供。
+### 核心功能
+- [ ] 添加评委登录状态持久化（localStorage/sessionStorage）
+- [ ] 实现实时评分更新（WebSocket 或轮询）
+- [ ] 添加评分历史记录查看功能
+- [ ] 支持评委修改已提交的评分
+- [ ] 添加选手照片上传和管理功能
 
-### 20. API 接口缺少 CSRF 保护
-**文件**: `ujn/scoring/views.py`
-**严重程度**: 中
-多个 POST 接口使用 `@csrf_exempt` 装饰器禁用了 CSRF 保护。虽然前后端分离场景常见，但应确保有其他安全措施（如 Token 认证）替代。
+### 管理功能
+- [ ] 添加管理员操作日志记录
+- [ ] 实现数据备份和恢复功能
+- [ ] 添加批量导入评委功能（从 Excel）
+- [ ] 支持自定义评分维度（如：创意分、表现分、技术分）
+- [ ] 添加活动结束/开始状态控制
 
-### 21. 缺少 .env.example 或环境变量文档
-**严重程度**: 中
-项目没有提供 `.env.example` 文件说明需要哪些环境变量，增加了部署配置的难度。
+### 用户体验
+- [ ] 添加加载状态指示器
+- [ ] 优化移动端响应式布局
+- [ ] 添加暗色模式支持
+- [ ] 实现评分进度实时显示
+- [ ] 添加评分完成动画效果
+
+---
+
+## 四、性能优化
+
+### 前端
+- [ ] 实现路由懒加载（已部分实现）
+- [ ] 添加组件懒加载
+- [ ] 优化图片加载（懒加载、压缩）
+- [ ] 实现虚拟滚动（长列表优化）
+- [ ] 添加 Service Worker 实现离线缓存
+
+### 后端
+- [ ] 添加数据库查询优化（select_related、prefetch_related）
+- [ ] 实现 Redis 缓存（配置、评委信息等）
+- [ ] 添加数据库索引优化
+- [ ] 实现分页功能（评委列表、选手列表）
+- [ ] 添加 API 响应压缩
+
+---
+
+## 五、部署与运维
+
+### Docker 优化
+- [ ] 完善 Dockerfile（多阶段构建）
+- [ ] 添加 docker-compose.yml 的健康检查
+- [ ] 配置日志收集（ELK 或 Loki）
+- [ ] 添加环境变量配置文件模板
+
+### 监控与日志
+- [ ] 添加应用性能监控（APM）
+- [ ] 配置错误日志收集和告警
+- [ ] 添加 API 调用统计
+- [ ] 实现数据库慢查询日志
+
+---
+
+## 六、测试
+
+### 单元测试
+- [ ] 后端：编写 models.py 的单元测试
+- [ ] 后端：编写 views.py 的 API 测试
+- [ ] 前端：编写 stores 的单元测试
+- [ ] 前端：编写组件的单元测试
+
+### 集成测试
+- [ ] 编写端到端测试（E2E）
+- [ ] 编写 API 集成测试
+- [ ] 测试并发评分场景
+
+---
+
+## 七、文档完善
+
+- [ ] 编写 API 接口文档（Swagger/OpenAPI）
+- [ ] 编写前端组件文档
+- [ ] 编写部署运维手册
+- [ ] 添加 CHANGELOG.md
+- [ ] 编写用户使用手册
+
+---
+
+## 八、已知问题
+
+### 代码问题
+1. `views.py` 文件过长（约 2000 行），需要拆分
+2. 前端 `ScoringView.vue` 和 `AdminDashboardView.vue` 组件过大
+3. 重复的 choices 定义（models.py 中多处定义相同的选择项）
+
+### 功能缺失
+1. 无评委评分修改功能
+2. 无实时评分更新
+3. 无操作日志记录
+4. 无数据备份功能
+
+---
+
+## 九、技术债务
+
+- [ ] 升级到最新版本的依赖包
+- [ ] 迁移到 Python 3.12+（如尚未使用）
+- [ ] 考虑使用 Django REST Framework 替代手写 API
+- [ ] 考虑引入 GraphQL 替代 REST API
+- [ ] 评估是否需要引入状态管理库（如 Vuexia 已使用 Pinia）
+
+---
+
+## 十、优先级排序
+
+### 高优先级（P0）
+1. 安全性改进（密码存储、环境变量）
+2. 添加单元测试
+3. 代码拆分和重构
+
+### 中优先级（P1）
+1. 实时评分更新
+2. 性能优化
+3. 部署优化
+
+### 低优先级（P2）
+1. 用户体验优化
+2. 文档完善
+3. 功能增强
+
+---
+
+*最后更新：2026-05-07*
