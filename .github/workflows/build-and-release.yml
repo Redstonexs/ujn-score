@@ -28,6 +28,13 @@ jobs:
             echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Validate tag exists
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" > /dev/null \
+            || (echo "Tag ${RELEASE_TAG} does not exist." && exit 1)
+
       - name: Checkout source code
         uses: actions/checkout@v5
         with:
@@ -63,7 +70,11 @@ jobs:
             --exclude='*.pyo' \
             --exclude='.pytest_cache/' \
             ujn/ "$PACKAGE_ROOT/$PACKAGE_NAME/ujn/"
-          cp README.md LICENSE .env.example "$PACKAGE_ROOT/$PACKAGE_NAME/"
+          for file in README.md LICENSE .env.example; do
+            if [[ -f "$file" ]]; then
+              cp "$file" "$PACKAGE_ROOT/$PACKAGE_NAME/"
+            fi
+          done
 
           tar -C "$PACKAGE_ROOT" -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
           (cd "$PACKAGE_ROOT" && zip -r "../${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
