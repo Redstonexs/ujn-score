@@ -51,7 +51,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build backend dependency snapshot
+      - name: Install backend dependencies
         working-directory: ujn
         run: pip install -r requirements.txt
 
@@ -66,7 +66,12 @@ jobs:
           mkdir -p "$PACKAGE_ROOT/$PACKAGE_NAME/frontend" "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
 
           cp -r frontend/dist "$PACKAGE_ROOT/$PACKAGE_NAME/frontend/dist"
-          cp -r ujn "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
+          rsync -a \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='*.pyo' \
+            --exclude='.pytest_cache/' \
+            ujn/ "$PACKAGE_ROOT/$PACKAGE_NAME/ujn/"
           cp README.md LICENSE .env.example "$PACKAGE_ROOT/$PACKAGE_NAME/"
 
           tar -C "$PACKAGE_ROOT" -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"

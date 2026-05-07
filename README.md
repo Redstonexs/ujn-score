@@ -252,7 +252,7 @@ sudo systemctl start scoring-backend
 - 工作流行为：
   - 构建 `frontend/dist`
   - 将 `frontend/dist` 与 `ujn/` 后端目录一起打包
-  - 自动上传 `tar.gz` 与 `zip` 两个压缩包到对应 GitHub Release
+  - 自动上传 `tar.gz` 与 `zip` 两个压缩包到对应 GitHub Release（若该标签 Release 不存在，会自动创建）
 
 ### 使用 Docker 部署（可选）
 
