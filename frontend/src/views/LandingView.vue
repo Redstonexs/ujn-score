@@ -18,16 +18,7 @@ const store = useScoringStore()
       </div>
       <h1>{{ store.siteConfig?.site_name || '评分系统' }}</h1>
       <p class="subtitle">请通过评委专属二维码或链接进入评分页面</p>
-      <div class="divider"></div>
-      <div class="actions">
-        <router-link to="/manage" class="btn btn-outline admin-entry">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          管理员入口
-        </router-link>
-      </div>
+
     </div>
     <div class="floating-shapes">
       <div class="shape shape-1"></div>

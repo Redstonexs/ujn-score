@@ -20,6 +20,7 @@ export const API = {
   judgeAuth: (token: string) => `${API_BASE_URL}/api/judge/${token}/auth/`,
   judgeQrcode: (token: string) => `${API_BASE_URL}/api/judge/${token}/qrcode/`,
   submit: `${API_BASE_URL}/api/submit/`,
+  submitVote: `${API_BASE_URL}/api/submit/vote/`,
 
   // 管理员接口
   adminVerify: `${API_BASE_URL}/api/admin/verify/`,
@@ -29,11 +30,14 @@ export const API = {
   adminTemplate: `${API_BASE_URL}/api/admin/template/`,
   adminScores: `${API_BASE_URL}/api/admin/scores/`,
   adminExport: `${API_BASE_URL}/api/admin/export/`,
+  adminExportDetails: `${API_BASE_URL}/api/admin/export/details/`,
   adminClear: `${API_BASE_URL}/api/admin/clear/`,
   adminJudges: `${API_BASE_URL}/api/admin/judges/`,
   adminJudgesBatch: `${API_BASE_URL}/api/admin/judges/batch/`,
   adminJudgeQrcodesExport: `${API_BASE_URL}/api/admin/judges/qrcodes/export/`,
   adminImport: `${API_BASE_URL}/api/admin/import/`,
+  adminJudgeUpdate: (id: number) =>
+    `${API_BASE_URL}/api/admin/judges/${id}/update/`,
   adminJudgeDelete: (id: number) =>
     `${API_BASE_URL}/api/admin/judges/${id}/delete/`,
   // 选手管理接口
@@ -44,6 +48,7 @@ export const API = {
   adminParticipantUpdate: (id: number) =>
     `${API_BASE_URL}/api/admin/participants/${id}/update/`,
   adminClearParticipants: `${API_BASE_URL}/api/admin/participants/clear/`,
+  adminExportParticipants: `${API_BASE_URL}/api/admin/participants/export/`,
   adminClearJudges: `${API_BASE_URL}/api/admin/judges/clear/`,
   // 类别管理接口
   adminCategoryCreate: `${API_BASE_URL}/api/admin/categories/create/`,
@@ -51,6 +56,7 @@ export const API = {
     `${API_BASE_URL}/api/admin/categories/${id}/update/`,
   adminCategoryDelete: (id: number) =>
     `${API_BASE_URL}/api/admin/categories/${id}/delete/`,
+  adminClearCategories: `${API_BASE_URL}/api/admin/categories/clear/`,
 };
 
 export default API;

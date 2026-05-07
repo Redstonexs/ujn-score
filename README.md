@@ -41,7 +41,7 @@
 
 ## 技术栈
 
-- **后端**：Django 5.2 + SQLite + django-cors-headers
+- **后端**：Django 5.2 + MySQL + django-cors-headers
 - **前端**：Vue 3 + TypeScript + Pinia + Vue Router + Vite
 - **Excel**：openpyxl
 - **二维码**：qrcode + Pillow
@@ -131,7 +131,7 @@ npm run dev
    - 域名（可选，用于生成二维码链接）
 
 2. **修改配置**：
-   - 后端：`backend/scoring_system/settings.py` 中修改 `ALLOWED_HOSTS`
+   - 后端：`ujn/scoring_system/settings.py` 中修改 `ALLOWED_HOSTS`
    - 前端：创建 `frontend/.env.production` 文件，设置生产环境 API 地址
 
 ### 部署步骤
@@ -139,7 +139,7 @@ npm run dev
 #### 1. 后端部署
 
 ```bash
-cd backend
+cd ujn
 
 # 安装依赖
 pip install -r requirements.txt
@@ -196,12 +196,12 @@ server {
 
     # 媒体文件（上传的背景图、Logo 等）
     location /media/ {
-        alias /path/to/backend/media/;
+        alias /path/to/ujn/media/;
     }
 
     # 静态文件（Django admin 等）
     location /static/ {
-        alias /path/to/backend/static/;
+        alias /path/to/ujn/static/;
     }
 }
 ```
@@ -218,7 +218,7 @@ After=network.target
 [Service]
 User=www-data
 Group=www-data
-WorkingDirectory=/path/to/backend
+WorkingDirectory=/path/to/ujn
 ExecStart=/path/to/venv/bin/gunicorn scoring_system.wsgi:application -b 127.0.0.1:8000
 Restart=always
 
@@ -251,10 +251,9 @@ version: "3.8"
 
 services:
   backend:
-    build: ./backend
+    build: ./ujn
     volumes:
-      - ./backend/db.sqlite3:/app/db.sqlite3
-      - ./backend/media:/app/media
+      - ./ujn/media:/app/media
     environment:
       - DEBUG=False
       - ALLOWED_HOSTS=your-domain.com
@@ -279,4 +278,4 @@ services:
   - `{site_name}` - 活动标题
   - `{token}` - 评委令牌
 - **Excel 导入**：如果你修改了 Excel 字段名，建议先重新下载模板，再把数据填进去导入
-- **数据备份**：生产环境建议定期备份 `backend/db.sqlite3` 和 `backend/media/` 目录
+- **数据备份**：生产环境建议定期备份 MySQL 数据库 和 `ujn/media/` 目录

@@ -328,4 +328,71 @@ body {
   background: var(--primary-light);
   color: var(--primary-color);
 }
+
+/* 开关组件样式 */
+.switch-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  width: 56px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.switch input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #d9d9d9;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 28px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.switch .slider:before {
+  position: absolute;
+  content: "";
+  height: 22px;
+  width: 22px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.switch input[type="checkbox"]:checked + .slider {
+  background: var(--primary-gradient);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.switch input[type="checkbox"]:checked + .slider:before {
+  transform: translateX(28px);
+}
+
+.switch input[type="checkbox"]:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
 </style>

@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+import warnings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,14 +22,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&4wd)963_e#i8htemdczc*bo1n^$csfzin)+1^!ilr^2upo@#@'
+# 生产环境务必通过环境变量 DJANGO_SECRET_KEY 设置
+SECRET_KEY = os.getenv(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-dev-only-key-change-in-production'
+)
+if 'dev-only-key' in SECRET_KEY:
+    warnings.warn(
+        '正在使用默认开发 SECRET_KEY，生产环境请设置 DJANGO_SECRET_KEY 环境变量！',
+        stacklevel=1,
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').strip().lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = ['*']
+# 生产环境应设置 DJANGO_ALLOWED_HOSTS 为实际域名（逗号分隔）
+_allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()] or ['*']
 
-CORS_ALLOW_ALL_ORIGINS = True
+# 生产环境应设置 CORS_ALLOWED_ORIGINS 为前端域名（逗号分隔）
+_cors_env = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if _cors_env:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()]
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
 
 
 # Application definition
@@ -77,26 +96,29 @@ WSGI_APPLICATION = 'scoring_system.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# USE_MYSQL = os.getenv('USE_MYSQL', '').strip() == '1'
+
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('MYSQL_DATABASE', 'ujn'),
+        'USER': os.getenv('MYSQL_USER', 'ujn'),
+        'PASSWORD': os.environ['MYSQL_PASSWORD'] if not DEBUG else os.getenv('MYSQL_PASSWORD', 'ujn2026'),
+        'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
+        'PORT': os.getenv('MYSQL_PORT', '3307'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
+    }
+}
+
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.sqlite3',
 #         'NAME': BASE_DIR / 'db.sqlite3',
 #     }
 # }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'ujn',
-        'USER': 'ujn',
-        'PASSWORD': 'ujn2026',
-        'HOST': '127.0.0.1',
-        'PORT': '3307',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
-    }
-}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -142,6 +164,3 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# settings.py
-CORS_ALLOW_ALL_ORIGINS = True
-DEBUG = True

@@ -74,7 +74,6 @@ const judgeDisplayName = computed(() => '评委老师')
       </div>
       <h2>访问失败</h2>
       <p>{{ authError }}</p>
-      <router-link to="/" class="btn btn-primary">返回首页</router-link>
     </div>
 
     <!-- 加载状态 -->

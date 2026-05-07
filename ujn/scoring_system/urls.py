@@ -29,8 +29,13 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
-    # 生产环境下也提供媒体文件服务（为了兼容性）
-    # 注意：生产环境建议使用 Nginx 或其他 Web 服务器直接提供静态/媒体文件
+    # ⚠️ 警告：生产环境不应通过 Django 提供媒体文件，性能极差！
+    # 请使用 Nginx/Apache 等 Web 服务器直接提供 /media/ 目录的静态文件。
+    # 以下配置仅为兼容性保留，确保在 Nginx 未配置 media 路由时仍能正常访问。
+    # Nginx 配置示例：
+    #   location /media/ {
+    #       alias /ujn/media/;
+    #   }
     urlpatterns += [
         path(f'{settings.MEDIA_URL.lstrip("/")}<path:path>', serve, {
             'document_root': settings.MEDIA_ROOT,

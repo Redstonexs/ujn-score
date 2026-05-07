@@ -2,6 +2,7 @@
 import { onMounted, onBeforeUnmount, ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useScoringStore } from "@/stores/scoring";
+import { showAlert, showConfirm } from "@/utils/dialog";
 
 const props = defineProps<{ token: string; categoryId: string }>();
 const router = useRouter();
@@ -19,27 +20,143 @@ const categoryParticipants = computed(() =>
   store.participants.filter((p) => p.category_id === categoryIdNum.value),
 );
 const siteConfig = computed(() => store.siteConfig);
+
+// 确定当前类别的打分模式
+const currentScoringMode = computed(() => {
+  if (!currentCategory.value || !siteConfig.value) return "score";
+  if (currentCategory.value.scoring_mode === "default") {
+    return siteConfig.value.scoring_mode;
+  }
+  return currentCategory.value.scoring_mode;
+});
+
+// 获取投票参数
+const voteParams = computed(() => {
+  if (!currentCategory.value || !siteConfig.value)
+    return { total: 10, select: 3 };
+
+  // 投票总数等于当前类别的实际选手人数
+  const total = categoryParticipants.value.length;
+  let select: number;
+
+  if (currentCategory.value.scoring_mode === "default") {
+    select = siteConfig.value.vote_select_count;
+  } else if (currentCategory.value.scoring_mode === "vote") {
+    select =
+      currentCategory.value.vote_select_count ??
+      siteConfig.value.vote_select_count;
+  } else {
+    select = siteConfig.value.vote_select_count;
+  }
+
+  return { total, select };
+});
+
+// 获取分数参数
+const scoreParams = computed(() => {
+  if (!currentCategory.value || !siteConfig.value)
+    return {
+      scoreMin: 1,
+      scoreMax: 100,
+      scoreValueType: "integer" as const,
+      allowDuplicateScores: true,
+      excludeExtremeScores: false,
+    };
+
+  let scoreMin: number;
+  let scoreMax: number;
+  let scoreValueType: "integer" | "decimal" | "integer_decimal";
+  let allowDuplicateScores: boolean;
+  let excludeExtremeScores: boolean;
+
+  if (
+    currentCategory.value.scoring_mode === "default" ||
+    currentCategory.value.scoring_mode === "vote"
+  ) {
+    scoreMin = siteConfig.value.score_min;
+    scoreMax = siteConfig.value.score_max;
+    scoreValueType = siteConfig.value.score_value_type;
+    allowDuplicateScores = siteConfig.value.allow_duplicate_scores;
+    excludeExtremeScores = siteConfig.value.exclude_extreme_scores;
+  } else {
+    // score
+    scoreMin = currentCategory.value.score_min ?? siteConfig.value.score_min;
+    scoreMax = currentCategory.value.score_max ?? siteConfig.value.score_max;
+    scoreValueType =
+      currentCategory.value.score_value_type ??
+      siteConfig.value.score_value_type;
+    allowDuplicateScores =
+      currentCategory.value.allow_duplicate_scores ??
+      siteConfig.value.allow_duplicate_scores;
+    excludeExtremeScores =
+      currentCategory.value.exclude_extreme_scores ??
+      siteConfig.value.exclude_extreme_scores;
+  }
+
+  return {
+    scoreMin,
+    scoreMax,
+    scoreValueType,
+    allowDuplicateScores,
+    excludeExtremeScores,
+  };
+});
+
 const scoreStep = computed(() =>
-  siteConfig.value?.score_value_type === "integer" ? "1" : "0.01",
+  scoreParams.value.scoreValueType === "integer" ? "1" : "0.01",
 );
 const judgeDisplayName = computed(() => "评委老师");
 const scoreRuleHint = computed(() => {
-  if (!siteConfig.value) return "";
+  const params = scoreParams.value;
   const typeText =
-    siteConfig.value.score_value_type === "decimal"
+    params.scoreValueType === "decimal"
       ? "仅小数（最多两位）"
-      : siteConfig.value.score_value_type === "integer_decimal"
+      : params.scoreValueType === "integer_decimal"
         ? "整数或小数（最多两位）"
         : "仅整数";
-  const duplicateText = siteConfig.value.allow_duplicate_scores
+  const duplicateText = params.allowDuplicateScores
     ? "允许重复分数"
     : "不允许重复分数";
-  return `请按规则打分：${typeText}，${duplicateText}，范围 ${siteConfig.value.score_min} - ${siteConfig.value.score_max}`;
+  return `请按规则打分：${typeText}，${duplicateText}，范围 ${params.scoreMin}-${params.scoreMax}`;
+});
+
+const voteRuleHint = computed(() => {
+  return `请从 ${voteParams.value.total} 名选手中选择 ${voteParams.value.select} 名`;
 });
 
 const isSubmitted = computed(() =>
   store.isCategorySubmitted(categoryIdNum.value),
 );
+
+// 获取当前投票
+const currentVotes = computed(() => store.getVotes(categoryIdNum.value));
+
+// 检查是否已投票给某个选手
+const isVoted = (participantId: number) =>
+  store.isVoted(categoryIdNum.value, participantId);
+
+// 切换投票
+const toggleVote = async (participantId: number) => {
+  if (isSubmitted.value) return;
+
+  const isCurrentlyVoted = isVoted(participantId);
+
+  // 如果已经达到上限，并且这次是要选择新的，就阻止并提示
+  if (
+    !isCurrentlyVoted &&
+    currentVotes.value.length >= voteParams.value.select
+  ) {
+    await showAlert(`最多只能选择 ${voteParams.value.select} 名选手`);
+    return;
+  }
+
+  store.toggleVote(categoryIdNum.value, participantId);
+};
+
+// 检查投票是否有效
+const allVotesValid = computed(() => {
+  return currentVotes.value.length === voteParams.value.select;
+});
 
 function normalizeScoreText(raw: string) {
   return raw.trim();
@@ -53,9 +170,7 @@ function normalizeComparableScore(value: number) {
 }
 
 function validateScoreInput(rawValue: string, participantId: number) {
-  if (!siteConfig.value) {
-    return { value: null, error: "评分规则未加载" };
-  }
+  const params = scoreParams.value;
 
   const text = normalizeScoreText(rawValue);
   if (!text) {
@@ -63,18 +178,18 @@ function validateScoreInput(rawValue: string, participantId: number) {
   }
 
   const pattern =
-    siteConfig.value.score_value_type === "integer"
+    params.scoreValueType === "integer"
       ? /^-?\d+$/
-      : siteConfig.value.score_value_type === "decimal"
+      : params.scoreValueType === "decimal"
         ? /^-?\d+\.\d{1,2}$/
         : /^-?\d+(\.\d{1,2})?$/;
   if (!pattern.test(text)) {
     return {
       value: null,
       error:
-        siteConfig.value.score_value_type === "decimal"
+        params.scoreValueType === "decimal"
           ? "当前规则只允许输入最多两位小数"
-          : siteConfig.value.score_value_type === "integer_decimal"
+          : params.scoreValueType === "integer_decimal"
             ? "当前规则只允许输入整数或最多两位小数"
             : "当前规则只允许输入整数",
     };
@@ -85,17 +200,14 @@ function validateScoreInput(rawValue: string, participantId: number) {
     return { value: null, error: "请输入有效分数" };
   }
 
-  if (
-    value < siteConfig.value.score_min ||
-    value > siteConfig.value.score_max
-  ) {
+  if (value < params.scoreMin || value > params.scoreMax) {
     return {
       value: null,
-      error: `分数必须在 ${siteConfig.value.score_min} - ${siteConfig.value.score_max} 之间`,
+      error: `分数必须在 ${params.scoreMin}-${params.scoreMax} 之间`,
     };
   }
 
-  if (!siteConfig.value.allow_duplicate_scores) {
+  if (!params.allowDuplicateScores) {
     const normalizedValue = normalizeComparableScore(value);
     const hasDuplicate = categoryParticipants.value.some((participant) => {
       if (participant.id === participantId) return false;
@@ -164,7 +276,7 @@ function clearInvalidScore(
   store.clearScore(categoryIdNum.value, participantId);
   target.value = "";
   submitError.value = message;
-  window.alert(message);
+  void showAlert(message);
 }
 
 function handleScoreInput(participantId: number, event: Event) {
@@ -188,22 +300,48 @@ function handleScoreInput(participantId: number, event: Event) {
 }
 
 async function handleSubmit() {
-  if (!allScoresValid.value || isSubmitted.value) return;
-  if (!window.confirm("请再次确认本类别所有分数无误，确认后将提交且不可修改。"))
-    return;
+  if (currentScoringMode.value === "score") {
+    if (!allScoresValid.value || isSubmitted.value) return;
+    if (
+      !(await showConfirm(
+        "请再次确认本类别所有分数无误，确认后将提交且不可修改。",
+      ))
+    )
+      return;
 
-  submitting.value = true;
-  submitError.value = "";
-  try {
-    await store.submitScores(categoryIdNum.value);
-    submitSuccess.value = true;
-    setTimeout(() => {
-      router.push({ name: "judgeHome", params: { token: props.token } });
-    }, 1500);
-  } catch (e: any) {
-    submitError.value = e.message;
-  } finally {
-    submitting.value = false;
+    submitting.value = true;
+    submitError.value = "";
+    try {
+      await store.submitScores(categoryIdNum.value);
+      submitSuccess.value = true;
+      setTimeout(() => {
+        router.push({ name: "judgeHome", params: { token: props.token } });
+      }, 1500);
+    } catch (e: any) {
+      submitError.value = e.message;
+    } finally {
+      submitting.value = false;
+    }
+  } else {
+    if (!allVotesValid.value || isSubmitted.value) return;
+    if (
+      !(await showConfirm("请再次确认您的选择无误，确认后将提交且不可修改。"))
+    )
+      return;
+
+    submitting.value = true;
+    submitError.value = "";
+    try {
+      await store.submitVotes(categoryIdNum.value);
+      submitSuccess.value = true;
+      setTimeout(() => {
+        router.push({ name: "judgeHome", params: { token: props.token } });
+      }, 1500);
+    } catch (e: any) {
+      submitError.value = e.message;
+    } finally {
+      submitting.value = false;
+    }
   }
 }
 
@@ -267,7 +405,7 @@ function goBack() {
         </div>
       </transition>
 
-      <!-- 已提交提示 - 显示评分详情（只读） -->
+      <!-- 已提交提示 - 显示评分/投票详情（只读） -->
       <div v-if="isSubmitted && !submitSuccess" class="submitted-content">
         <div class="submitted-header">
           <div class="submitted-badge">
@@ -282,8 +420,12 @@ function goBack() {
             </svg>
             <span>已提交</span>
           </div>
-          <h3>评分详情</h3>
-          <p class="submitted-desc">您已完成此类别的评分，以下是您的评分记录</p>
+          <h3>{{ currentScoringMode === "vote" ? "投票详情" : "评分详情" }}</h3>
+          <p class="submitted-desc">
+            您已完成此类别的{{
+              currentScoringMode === "vote" ? "投票" : "评分"
+            }}，以下是您的记录
+          </p>
         </div>
 
         <div class="scoring-table-wrap submitted-table-wrap">
@@ -292,7 +434,9 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
-                <th class="col-score">您的评分</th>
+                <th class="col-score">
+                  {{ currentScoringMode === "vote" ? "投票状态" : "您的评分" }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -318,7 +462,16 @@ function goBack() {
                   </div>
                 </td>
                 <td class="col-score">
-                  <div class="score-display">
+                  <div
+                    v-if="currentScoringMode === 'vote'"
+                    class="vote-display"
+                  >
+                    <span v-if="isVoted(p.id)" class="vote-status voted"
+                      >✓ 已选中</span
+                    >
+                    <span v-else class="vote-status not-voted">-</span>
+                  </div>
+                  <div v-else class="score-display">
                     <span class="score-value">{{
                       store.getScore(categoryIdNum, p.id) ?? "-"
                     }}</span>
@@ -346,7 +499,7 @@ function goBack() {
         </div>
       </div>
 
-      <!-- 评分表格 -->
+      <!-- 评分/投票表格 -->
       <div v-else-if="!submitSuccess" class="scoring-content">
         <div class="score-hint" v-if="store.siteConfig">
           <svg
@@ -359,7 +512,10 @@ function goBack() {
             <line x1="12" y1="16" x2="12" y2="12" />
             <line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
-          {{ scoreRuleHint }}
+          {{ currentScoringMode === "vote" ? voteRuleHint : scoreRuleHint }}
+          <span v-if="currentScoringMode === 'vote'" class="vote-count"
+            >已选：{{ currentVotes.length }} / {{ voteParams.select }}</span
+          >
         </div>
 
         <div class="scoring-table-wrap">
@@ -368,7 +524,9 @@ function goBack() {
               <tr>
                 <th class="col-order">序号</th>
                 <th class="col-name">选手信息</th>
-                <th class="col-score">分数</th>
+                <th class="col-score">
+                  {{ currentScoringMode === "vote" ? "选择" : "分数" }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -376,6 +534,9 @@ function goBack() {
                 v-for="(p, idx) in categoryParticipants"
                 :key="p.id"
                 class="participant-row"
+                :class="{
+                  voted: currentScoringMode === 'vote' && isVoted(p.id),
+                }"
               >
                 <td class="col-order">
                   <span class="order-badge">{{ idx + 1 }}</span>
@@ -394,15 +555,32 @@ function goBack() {
                   </div>
                 </td>
                 <td class="col-score">
-                  <div class="score-input-wrapper">
+                  <div
+                    v-if="currentScoringMode === 'vote'"
+                    class="vote-checkbox"
+                    @click="toggleVote(p.id)"
+                  >
+                    <div class="checkbox" :class="{ checked: isVoted(p.id) }">
+                      <svg
+                        v-if="isVoted(p.id)"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div v-else class="score-input-wrapper">
                     <input
                       type="number"
                       class="score-input"
-                      :min="store.siteConfig?.score_min || 1"
-                      :max="store.siteConfig?.score_max || 100"
+                      :min="scoreParams.scoreMin"
+                      :max="scoreParams.scoreMax"
                       :value="store.getScore(categoryIdNum, p.id) ?? ''"
                       @input="handleScoreInput(p.id, $event)"
-                      :placeholder="`${store.siteConfig?.score_min || 1}-${store.siteConfig?.score_max || 100}`"
+                      :placeholder="`${scoreParams.scoreMin}-${scoreParams.scoreMax}`"
                       :step="scoreStep"
                     />
                     <span class="score-unit">分</span>
@@ -435,10 +613,18 @@ function goBack() {
           <button
             class="btn btn-submit"
             :class="{
-              'btn-primary': allScoresValid,
-              'btn-disabled': !allScoresValid,
+              'btn-primary':
+                currentScoringMode === 'vote' ? allVotesValid : allScoresValid,
+              'btn-disabled':
+                currentScoringMode === 'vote'
+                  ? !allVotesValid
+                  : !allScoresValid,
             }"
-            :disabled="!allScoresValid || submitting"
+            :disabled="
+              (currentScoringMode === 'vote'
+                ? !allVotesValid
+                : !allScoresValid) || submitting
+            "
             @click="handleSubmit"
           >
             <span v-if="submitting" class="spinner"></span>
@@ -453,7 +639,12 @@ function goBack() {
             </svg>
             {{ submitting ? "提交中..." : "确认提交" }}
           </button>
-          <p class="submit-hint" v-if="!allScoresValid">
+          <p
+            class="submit-hint"
+            v-if="
+              !(currentScoringMode === 'vote' ? allVotesValid : allScoresValid)
+            "
+          >
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -464,7 +655,11 @@ function goBack() {
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            请确保所有选手都已评分且分数在有效范围内
+            {{
+              currentScoringMode === "vote"
+                ? `请选择 ${voteParams.select} 名选手`
+                : `请确保所有选手都已评分且分数在有效范围内`
+            }}
           </p>
         </div>
       </div>
@@ -567,19 +762,31 @@ function goBack() {
   height: 18px;
 }
 
+.vote-count {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: var(--primary-light);
+  border-radius: 12px;
+  font-weight: 600;
+}
+
 .scoring-table-wrap {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
   padding: 8px;
   box-shadow: var(--shadow-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .scoring-table {
   width: 100%;
+  min-width: 320px;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: auto;
 }
 
 .scoring-table th {
@@ -614,29 +821,39 @@ function goBack() {
   background: rgba(24, 144, 255, 0.02);
 }
 
+.participant-row.voted {
+  background: rgba(82, 196, 26, 0.05);
+}
+
 .col-order {
-  width: 60px;
+  width: 50px;
+  min-width: 50px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .order-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: var(--primary-light);
   color: var(--primary-color);
   border-radius: 50%;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .col-score {
-  width: 180px;
+  width: 90px;
+  min-width: 90px;
+  white-space: nowrap;
 }
 
 .col-name {
+  width: auto;
+  min-width: 100px;
   text-align: center;
 }
 
@@ -707,6 +924,8 @@ function goBack() {
 .participant-details {
   flex: 1;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .participant-name {
@@ -714,10 +933,14 @@ function goBack() {
   font-size: 17px;
   color: var(--text-primary);
   margin-bottom: 4px;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .participant-college {
   margin-top: 4px;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .participant-desc {
@@ -735,11 +958,11 @@ function goBack() {
 }
 
 .score-input {
-  width: 80px;
-  padding: 10px 12px;
+  width: 60px;
+  padding: 8px 6px;
   border: 2px solid #e8e8e8;
   border-radius: var(--radius-md);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   text-align: center;
   outline: none;
@@ -765,6 +988,57 @@ function goBack() {
 
 .score-unit {
   font-size: 16px;
+  color: var(--text-muted);
+}
+
+/* 投票相关样式 */
+.vote-checkbox {
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+}
+
+.checkbox {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #e8e8e8;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  background: white;
+}
+
+.checkbox.checked {
+  background: var(--primary-gradient);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.checkbox svg {
+  width: 18px;
+  height: 18px;
+}
+
+.vote-display {
+  display: flex;
+  justify-content: center;
+}
+
+.vote-status {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+}
+
+.vote-status.voted {
+  background: linear-gradient(135deg, #f6ffed 0%, #e6f7d9 100%);
+  color: #52c41a;
+  border: 2px solid #b7eb8f;
+}
+
+.vote-status.not-voted {
   color: var(--text-muted);
 }
 
@@ -1077,18 +1351,62 @@ function goBack() {
 
   .scoring-table th,
   .scoring-table td {
-    padding: 12px;
+    padding: 10px 8px;
+    font-size: 14px;
+  }
+
+  .scoring-table {
+    min-width: 280px;
+  }
+
+  .col-order {
+    width: 40px;
+    min-width: 40px;
+  }
+
+  .order-badge {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .col-score {
+    width: 80px;
+    min-width: 80px;
+  }
+
+  .col-name {
+    min-width: 80px;
+  }
+
+  .participant-name {
+    font-size: 15px;
+  }
+
+  .college-badge {
+    font-size: 12px;
+    padding: 2px 8px;
   }
 
   .participant-photo,
   .photo-placeholder {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
   }
 
   .score-input {
-    width: 70px;
-    padding: 8px;
+    width: 50px;
+    padding: 6px 4px;
+    font-size: 14px;
+  }
+
+  .score-unit {
+    font-size: 12px;
+  }
+
+  .checkbox {
+    width: 28px;
+    height: 28px;
   }
 
   .submitted-notice {

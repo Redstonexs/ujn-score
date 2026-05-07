@@ -12,6 +12,7 @@ urlpatterns = [
     path('judge/<uuid:token>/auth/', views.judge_auth, name='judge_auth'),
     path('judge/<uuid:token>/qrcode/', views.generate_qrcode, name='generate_qrcode'),
     path('submit/', views.submit_scores, name='submit_scores'),
+    path('submit/vote/', views.submit_votes, name='submit_votes'),
 
     # 管理员接口
     path('admin/verify/', views.verify_admin, name='verify_admin'),
@@ -21,10 +22,13 @@ urlpatterns = [
     path('admin/template/', views.download_import_template, name='download_import_template'),
     path('admin/scores/', views.get_all_scores, name='get_all_scores'),
     path('admin/export/', views.export_excel, name='export_excel'),
+    path('admin/export/details/', views.export_score_details, name='export_score_details'),
+    path('admin/participants/export/', views.export_participants, name='export_participants'),
     path('admin/clear/', views.clear_scores, name='clear_scores'),
     path('admin/judges/', views.get_judges, name='get_judges'),
     path('admin/judges/batch/', views.batch_create_judges, name='batch_create_judges'),
     path('admin/judges/qrcodes/export/', views.export_all_judge_qrcodes, name='export_all_judge_qrcodes'),
+    path('admin/judges/<int:judge_id>/update/', views.update_judge, name='update_judge'),
     path('admin/judges/<int:judge_id>/delete/', views.delete_judge, name='delete_judge'),
     path('admin/import/', views.import_data, name='import_data'),
     # 选手管理接口
@@ -38,4 +42,5 @@ urlpatterns = [
     path('admin/categories/create/', views.create_category, name='create_category'),
     path('admin/categories/<int:category_id>/update/', views.update_category, name='update_category'),
     path('admin/categories/<int:category_id>/delete/', views.delete_category, name='delete_category'),
+    path('admin/categories/clear/', views.clear_categories, name='clear_categories'),
 ]
