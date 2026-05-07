@@ -25,9 +25,12 @@ jobs:
     steps:
       - name: Resolve release tag
         id: release_tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            echo "tag=${REF_NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
