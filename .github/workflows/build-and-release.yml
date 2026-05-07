@@ -1,0 +1,81 @@
+name: Build Frontend and Release Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to package and release (e.g. v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout source code
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ steps.release_tag.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build backend dependency snapshot
+        working-directory: ujn
+        run: pip install -r requirements.txt
+
+      - name: Package release files
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          PACKAGE_ROOT="release-package"
+          PACKAGE_NAME="ujn-score-${RELEASE_TAG}"
+
+          rm -rf "$PACKAGE_ROOT" "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}.zip"
+          mkdir -p "$PACKAGE_ROOT/$PACKAGE_NAME/frontend" "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
+
+          cp -r frontend/dist "$PACKAGE_ROOT/$PACKAGE_NAME/frontend/dist"
+          cp -r ujn "$PACKAGE_ROOT/$PACKAGE_NAME/ujn"
+          cp README.md LICENSE .env.example "$PACKAGE_ROOT/$PACKAGE_NAME/"
+
+          tar -C "$PACKAGE_ROOT" -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
+          (cd "$PACKAGE_ROOT" && zip -r "../${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: |
+            ujn-score-${{ steps.release_tag.outputs.tag }}.tar.gz
+            ujn-score-${{ steps.release_tag.outputs.tag }}.zip

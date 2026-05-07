@@ -242,6 +242,18 @@ sudo systemctl start scoring-backend
 - **活动标题**：修改为实际活动名称
 - **背景图/Logo**：上传活动相关图片
 
+### GitHub Actions 自动构建并发布 Release
+
+仓库已提供自动化工作流：`.github/workflows/build-and-release.yml`，用于构建前端并与后端打包发布 Release。
+
+- 触发方式：
+  - 推送标签（`v*`，如 `v1.0.0`）后自动执行
+  - 手动触发 `Build Frontend and Release Package`，并输入目标标签
+- 工作流行为：
+  - 构建 `frontend/dist`
+  - 将 `frontend/dist` 与 `ujn/` 后端目录一起打包
+  - 自动上传 `tar.gz` 与 `zip` 两个压缩包到对应 GitHub Release
+
 ### 使用 Docker 部署（可选）
 
 项目支持 Docker 部署，可参考以下 `docker-compose.yml`：
