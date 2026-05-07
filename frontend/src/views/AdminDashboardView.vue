@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useScoringStore } from "@/stores/scoring";
 import API, { resolveAssetUrl } from "@/config/api";
@@ -321,8 +321,12 @@ onMounted(async () => {
     loadConfig(),
     loadJudges(),
     loadParticipants(),
-    loadScores(),
   ]);
+  connectSSE();
+});
+
+onUnmounted(() => {
+  disconnectSSE();
 });
 
 async function loadConfig() {
@@ -388,6 +392,68 @@ async function loadScores() {
   } finally {
     loadingScores.value = false;
   }
+}
+
+// ==================== SSE 实时评分更新 ====================
+
+type SSEStatus = "disconnected" | "connecting" | "connected";
+const sseStatus = ref<SSEStatus>("disconnected");
+let sseSource: EventSource | null = null;
+
+function connectSSE() {
+  disconnectSSE();
+  sseStatus.value = "connecting";
+  loadingScores.value = true;
+
+  const url = `${API.adminScoresStream}?password=${encodeURIComponent(store.adminPassword)}`;
+  const es = new EventSource(url);
+  sseSource = es;
+
+  es.addEventListener("init", (e: MessageEvent) => {
+    try {
+      scoresData.value = JSON.parse(e.data);
+      sseStatus.value = "connected";
+    } catch (err) {
+      console.error("SSE init 解析失败:", err);
+    } finally {
+      loadingScores.value = false;
+    }
+  });
+
+  es.addEventListener("update", (e: MessageEvent) => {
+    try {
+      scoresData.value = JSON.parse(e.data);
+    } catch (err) {
+      console.error("SSE update 解析失败:", err);
+    }
+  });
+
+  es.addEventListener("error", (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      console.error("SSE 服务端错误:", data.message);
+    } catch {
+      // non-JSON error event
+    }
+  });
+
+  es.onerror = () => {
+    // EventSource 会自动尝试重连
+    if (es.readyState === EventSource.CLOSED) {
+      sseStatus.value = "disconnected";
+      loadingScores.value = false;
+    } else {
+      sseStatus.value = "connecting";
+    }
+  };
+}
+
+function disconnectSSE() {
+  if (sseSource) {
+    sseSource.close();
+    sseSource = null;
+  }
+  sseStatus.value = "disconnected";
 }
 
 async function saveConfig() {
@@ -1136,7 +1202,7 @@ function getJudgeCategoryProgressPercent(category: any, judgeId: number) {
 
 function switchTab(tab: TabKey) {
   activeTab.value = tab;
-  if (tab === "scores" && !scoresData.value) {
+  if (tab === "scores" && !scoresData.value && sseStatus.value !== "connected") {
     loadScores();
   }
   if (tab === "participants") {
@@ -1621,6 +1687,9 @@ const sectionCtx = {
   loadJudges,
   loadParticipants,
   loadScores,
+  connectSSE,
+  disconnectSSE,
+  sseStatus,
   loadStoredJudgeQrPattern,
   loadingConfig,
   loadingJudges,

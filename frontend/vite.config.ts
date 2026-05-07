@@ -15,6 +15,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // SSE 端点需要禁用响应缓冲，必须在通用 /api 之前
+      "/api/admin/scores/stream/": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,

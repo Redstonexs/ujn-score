@@ -1299,3 +1299,63 @@ to {opacity: 1;
 .admin-dashboard .delete-actions .btn-danger:disabled {opacity: 0.6;
   cursor: not-allowed;
   background: #d9d9d9;}
+
+/* ==================== SSE 连接状态指示器 ==================== */
+
+.admin-dashboard .sse-status-group {display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;}
+
+.admin-dashboard .sse-status-badge {display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;}
+
+.admin-dashboard .sse-status-badge.connected {background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
+  box-shadow: 0 2px 6px rgba(82, 196, 26, 0.15);}
+
+.admin-dashboard .sse-status-badge.connecting {background: linear-gradient(135deg, #fffbe6 0%, #fff1b8 100%);
+  color: #d48806;
+  border: 1px solid #ffe58f;
+  box-shadow: 0 2px 6px rgba(250, 173, 20, 0.15);}
+
+.admin-dashboard .sse-status-badge.disconnected {background: linear-gradient(135deg, #fff2f0 0%, #ffccc7 100%);
+  color: #cf1322;
+  border: 1px solid #ffa39e;
+  box-shadow: 0 2px 6px rgba(255, 77, 79, 0.15);}
+
+.admin-dashboard .sse-dot {width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;}
+
+.admin-dashboard .sse-status-badge.connected .sse-dot {background: #52c41a;
+  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.25);
+  animation: sse-pulse-green 2s ease-in-out infinite;}
+
+.admin-dashboard .sse-status-badge.connecting .sse-dot {background: #faad14;
+  box-shadow: 0 0 0 3px rgba(250, 173, 20, 0.25);
+  animation: sse-pulse-amber 1s ease-in-out infinite;}
+
+.admin-dashboard .sse-status-badge.disconnected .sse-dot {background: #ff4d4f;
+  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.25);}
+
+@keyframes sse-pulse-green {
+  0%, 100% {box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.25);}
+  50% {box-shadow: 0 0 0 6px rgba(82, 196, 26, 0.1);}}
+
+@keyframes sse-pulse-amber {
+  0%, 100% {box-shadow: 0 0 0 3px rgba(250, 173, 20, 0.25);}
+  50% {box-shadow: 0 0 0 6px rgba(250, 173, 20, 0.1);}}
+
+.admin-dashboard .btn-sm {padding: 4px 12px;
+  font-size: 12px;
+  min-height: auto;}

@@ -29,6 +29,7 @@ export const API = {
   adminQrcode: `${API_BASE_URL}/api/admin/qrcode/`,
   adminTemplate: `${API_BASE_URL}/api/admin/template/`,
   adminScores: `${API_BASE_URL}/api/admin/scores/`,
+  adminScoresStream: `${API_BASE_URL}/api/admin/scores/stream/`,
   adminExport: `${API_BASE_URL}/api/admin/export/`,
   adminExportDetails: `${API_BASE_URL}/api/admin/export/details/`,
   adminClear: `${API_BASE_URL}/api/admin/clear/`,

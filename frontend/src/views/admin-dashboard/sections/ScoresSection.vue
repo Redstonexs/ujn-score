@@ -2,6 +2,8 @@
 // @ts-nocheck
 const props = defineProps<{ ctx: any }>();
 const {
+  connectSSE,
+  disconnectSSE,
   getJudgeCategoryCompletedCount,
   getJudgeCategoryProgressPercent,
   getJudgeScoreStatus,
@@ -16,6 +18,7 @@ const {
   loadScores,
   loadingScores,
   scoresData,
+  sseStatus,
   toggleSort,
 } = props.ctx;
 </script>
@@ -23,6 +26,29 @@ const {
 <template>
   <div class="tab-content">
     <div class="section-actions">
+      <div class="sse-status-group">
+        <span
+          class="sse-status-badge"
+          :class="{
+            connected: sseStatus === 'connected',
+            connecting: sseStatus === 'connecting',
+            disconnected: sseStatus === 'disconnected',
+          }"
+        >
+          <span class="sse-dot"></span>
+          <span v-if="sseStatus === 'connected'">实时更新中</span>
+          <span v-else-if="sseStatus === 'connecting'">连接中…</span>
+          <span v-else>已断开</span>
+        </span>
+        <button
+          v-if="sseStatus === 'disconnected'"
+          class="btn btn-outline btn-sm"
+          @click="connectSSE"
+          title="重新连接实时更新"
+        >
+          重连
+        </button>
+      </div>
       <button class="btn btn-outline" @click="loadScores">
         <svg
           viewBox="0 0 24 24"

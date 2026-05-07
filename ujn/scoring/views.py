@@ -18,6 +18,7 @@ from openpyxl import Workbook, load_workbook
 
 from django.db import models
 from .models import Category, Judge, Participant, Score, SiteConfig, Vote
+from .sse import score_event_bus, build_scores_data
 
 logger = logging.getLogger(__name__)
 
@@ -624,6 +625,7 @@ def submit_scores(request):
             return error_response(f'当前规则不允许重复打分，重复分数：{repeated}')
 
     Score.objects.bulk_create(score_objects)
+    score_event_bus.notify()
     return json_response({'success': True, 'message': f'成功提交【{category.name}】的评分'})
 
 
@@ -706,6 +708,7 @@ def submit_votes(request):
         ))
 
     Vote.objects.bulk_create(vote_objects)
+    score_event_bus.notify()
     return json_response({'success': True, 'message': f'成功提交【{category.name}】的投票'})
 
 
@@ -725,98 +728,7 @@ def get_all_scores(request):
     if not _verify_admin(request):
         return error_response('权限不足', 403)
 
-    config = SiteConfig.get_config()
-    all_scores = list(Score.objects.select_related('judge', 'participant', 'participant__category').all())
-    all_votes = list(Vote.objects.select_related('judge', 'participant', 'category').all())
-    categories = list(Category.objects.prefetch_related('participants').all())
-    judges = list(Judge.objects.filter(is_active=True).order_by('order', 'id'))
-
-    # 处理分数模式数据
-    scores_by_judge_category = defaultdict(dict)
-    scores_by_participant = defaultdict(list)
-    for score in all_scores:
-        scores_by_judge_category[(score.judge_id, score.participant.category_id)][score.participant_id] = score.score
-        scores_by_participant[score.participant_id].append(score.score)
-    
-    # 处理投票模式数据
-    votes_by_judge_category = defaultdict(list)
-    votes_by_participant = defaultdict(int)
-    for vote in all_votes:
-        votes_by_judge_category[(vote.judge_id, vote.category_id)].append({
-            'participant_id': vote.participant_id,
-            'vote_order': vote.vote_order,
-        })
-        votes_by_participant[vote.participant_id] += 1
-
-    result = {
-        'categories': [],
-        'judges': [{'id': j.id, 'order': j.order, 'name': j.name} for j in judges],
-        'scores': {},
-        'votes': {},
-        'statistics': {},
-        'exclude_extreme_scores': config.exclude_extreme_scores,
-        'calculation_rule': format_score_rule_text(config),
-        'category_rules': {},
-    }
-
-    for cat in categories:
-        participants = list(cat.participants.all())
-        mode = get_category_scoring_mode(cat)
-        result['categories'].append({
-            'id': cat.id,
-            'name': cat.name,
-            'mode': mode,
-            'participants': [{'id': p.id, 'name': p.name, 'order': p.order, 'college': p.college} for p in participants],
-        })
-        # 为每个类别添加对应的统计规则
-        result['category_rules'][cat.id] = format_category_rule_text(cat, config)
-
-        if mode == 'vote':
-            # 投票模式
-            cat_votes = {}
-            for judge in judges:
-                judge_votes = votes_by_judge_category.get((judge.id, cat.id), [])
-                if judge_votes:
-                    cat_votes[judge.id] = judge_votes
-            result['votes'][cat.id] = cat_votes
-            
-            # 投票统计
-            cat_stats = []
-            for participant in participants:
-                vote_count = votes_by_participant.get(participant.id, 0)
-                cat_stats.append({
-                    'participant_id': participant.id,
-                    'participant_name': participant.name,
-                    'college': participant.college,
-                    'vote_count': vote_count,
-                })
-            # 按得票数降序排序
-            cat_stats.sort(key=lambda item: (item['vote_count'], item['participant_name']), reverse=True)
-            result['statistics'][cat.id] = cat_stats
-        else:
-            # 分数模式
-            cat_scores = {}
-            for judge in judges:
-                judge_scores = scores_by_judge_category.get((judge.id, cat.id), {})
-                if judge_scores:
-                    cat_scores[judge.id] = {participant_id: format_score_value(score) for participant_id, score in judge_scores.items()}
-            result['scores'][cat.id] = cat_scores
-
-            cat_stats = []
-            # 获取类别的统计规则设置
-            _, _, _, _, category_exclude_extreme = get_category_score_params(cat)
-            for participant in participants:
-                stat = calculate_participant_statistics(
-                    participant,
-                    scores_by_participant.get(participant.id, []),
-                    category_exclude_extreme,
-                )
-                if stat:
-                    cat_stats.append(stat)
-            cat_stats.sort(key=lambda item: (item['total'], item['average'], item['participant_name']), reverse=True)
-            result['statistics'][cat.id] = cat_stats
-
-
+    result = build_scores_data()
     return json_response(result)
 
 
@@ -1125,6 +1037,7 @@ def clear_scores(request):
     Score.objects.all().delete()
     Vote.objects.all().delete()
     total_count = score_count + vote_count
+    score_event_bus.notify()
     return json_response({'success': True, 'message': f'已清空 {total_count} 条记录（{score_count} 条评分，{vote_count} 条投票）'})
 
 

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from .sse import score_events_stream
 
 urlpatterns = [
     # 公开接口
@@ -21,6 +22,7 @@ urlpatterns = [
     path('admin/qrcode/', views.generate_admin_qrcode, name='generate_admin_qrcode'),
     path('admin/template/', views.download_import_template, name='download_import_template'),
     path('admin/scores/', views.get_all_scores, name='get_all_scores'),
+    path('admin/scores/stream/', score_events_stream, name='score_events_stream'),
     path('admin/export/', views.export_excel, name='export_excel'),
     path('admin/export/details/', views.export_score_details, name='export_score_details'),
     path('admin/participants/export/', views.export_participants, name='export_participants'),
