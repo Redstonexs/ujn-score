@@ -53,6 +53,8 @@ export interface JudgeInfo {
   judge_id: number;
   judge_name: string;
   token: string;
+  allowed_category_ids: number[];
+  all_categories_allowed: boolean;
   submitted_categories: number[];
   submitted_scores: Record<number, Record<number, number>>;
   submitted_votes: Record<number, number[]>;
@@ -121,6 +123,8 @@ export const useScoringStore = defineStore("scoring", () => {
       judge_id: data.judge_id,
       judge_name: data.judge_name,
       token,
+      allowed_category_ids: normalizeCategoryIds(data.allowed_category_ids),
+      all_categories_allowed: Boolean(data.all_categories_allowed),
       submitted_categories: submittedCategoryIds,
       submitted_scores: submittedScores,
       submitted_votes: submittedVotes,
@@ -163,23 +167,32 @@ export const useScoringStore = defineStore("scoring", () => {
   }
 
   // 获取类别列表
-  async function fetchCategories() {
+  async function fetchCategories(token?: string) {
     try {
-      const res = await fetch(API.categories);
+      const url = token
+        ? `${API.categories}?token=${encodeURIComponent(token)}`
+        : API.categories;
+      const res = await fetch(url);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "获取类别失败");
       categories.value = data.categories;
     } catch (e: any) {
       console.error("获取类别失败:", e);
+      throw e;
     }
   }
 
   // 获取参赛者列表
-  async function fetchParticipants(categoryId?: number) {
+  async function fetchParticipants(categoryId?: number, token?: string) {
     try {
-      let url = API.participants;
-      if (categoryId) url += `?category_id=${categoryId}`;
+      const params = new URLSearchParams();
+      if (categoryId) params.set("category_id", String(categoryId));
+      if (token) params.set("token", token);
+      const query = params.toString();
+      const url = query ? `${API.participants}?${query}` : API.participants;
       const res = await fetch(url);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "获取参赛者失败");
       participants.value = (data.participants || []).map(
         (participant: Participant) => ({
           ...participant,
@@ -188,6 +201,7 @@ export const useScoringStore = defineStore("scoring", () => {
       );
     } catch (e: any) {
       console.error("获取参赛者失败:", e);
+      throw e;
     }
   }
 

@@ -280,8 +280,13 @@ onMounted(async () => {
     router.push("/");
     return;
   }
-  await store.fetchCategories();
-  await store.fetchParticipants(categoryIdNum.value);
+  await store.fetchCategories(props.token);
+  if (!currentCategory.value) {
+    await showAlert("您没有权限访问该项目");
+    router.push({ name: "judgeHome", params: { token: props.token } });
+    return;
+  }
+  await store.fetchParticipants(categoryIdNum.value, props.token);
   syncTimer = window.setInterval(syncJudgeProgress, 8000);
   document.addEventListener("visibilitychange", handleVisibilityChange);
 });

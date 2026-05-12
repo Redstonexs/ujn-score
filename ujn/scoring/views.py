@@ -11,6 +11,7 @@ from functools import wraps
 from threading import Lock
 
 import qrcode
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -211,6 +212,69 @@ def judge_display_name(judge_or_id):
         return judge_or_id.name
     judge_id = judge_or_id.id if hasattr(judge_or_id, 'id') else judge_or_id
     return f'评委{judge_id}'
+
+
+def get_judge_allowed_category_ids(judge):
+    return [category.id for category in judge.allowed_categories.all()]
+
+
+def judge_can_access_category(judge, category):
+    allowed_category_ids = get_judge_allowed_category_ids(judge)
+    return not allowed_category_ids or category.id in allowed_category_ids
+
+
+def serialize_judge(judge):
+    allowed_categories = list(judge.allowed_categories.all())
+    allowed_category_ids = [category.id for category in allowed_categories]
+    return {
+        'id': judge.id,
+        'order': judge.order,
+        'name': judge.name,
+        'display_name': judge_display_name(judge),
+        'token': str(judge.token),
+        'is_active': judge.is_active,
+        'allowed_category_ids': allowed_category_ids,
+        'allowed_category_names': [category.name for category in allowed_categories],
+        'all_categories_allowed': len(allowed_category_ids) == 0,
+        'scoring_url': judge.get_scoring_url(),
+        'qrcode_url': f'/api/judge/{judge.token}/qrcode/',
+        'created_at': judge.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+    }
+
+
+def parse_category_id_list(value):
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise ValueError('项目授权必须是数组')
+
+    category_ids = []
+    for item in value:
+        try:
+            category_id = int(item)
+        except (TypeError, ValueError):
+            raise ValueError('项目授权包含无效ID')
+        if category_id <= 0:
+            raise ValueError('项目授权包含无效ID')
+        category_ids.append(category_id)
+    return sorted(set(category_ids))
+
+
+def apply_judge_category_filter(queryset, token):
+    if not token:
+        return queryset, None, None
+    try:
+        judge = Judge.objects.prefetch_related('allowed_categories').get(
+            token=token,
+            is_active=True,
+        )
+    except (Judge.DoesNotExist, ValidationError, ValueError):
+        return queryset, None, error_response('无效的评委链接', 404)
+
+    allowed_category_ids = get_judge_allowed_category_ids(judge)
+    if allowed_category_ids:
+        queryset = queryset.filter(id__in=allowed_category_ids)
+    return queryset, judge, None
 
 
 def format_extreme_rule_text(exclude_extreme_scores, exclude_lowest_count=1, exclude_highest_count=1):
@@ -582,14 +646,20 @@ def build_judge_submission_state(judge):
 def judge_auth(request, token):
     """通过token验证评委身份"""
     try:
-        judge = Judge.objects.get(token=token, is_active=True)
+        judge = Judge.objects.prefetch_related('allowed_categories').get(
+            token=token,
+            is_active=True,
+        )
     except Judge.DoesNotExist:
         return error_response('无效的评委链接', 404)
 
     submission_state = build_judge_submission_state(judge)
+    allowed_category_ids = get_judge_allowed_category_ids(judge)
     
-    # 获取所有类别的打分模式信息
+    # 获取该评委可参与类别的打分模式信息。未配置授权时默认可参与全部类别。
     categories = Category.objects.all()
+    if allowed_category_ids:
+        categories = categories.filter(id__in=allowed_category_ids)
     category_modes = {}
     for cat in categories:
         mode = get_category_scoring_mode(cat)
@@ -619,6 +689,8 @@ def judge_auth(request, token):
     return json_response({
         'judge_id': judge.id,
         'judge_name': judge_display_name(judge),
+        'allowed_category_ids': allowed_category_ids,
+        'all_categories_allowed': len(allowed_category_ids) == 0,
         **submission_state,
         'category_modes': category_modes,
     })
@@ -630,6 +702,12 @@ def judge_auth(request, token):
 def get_categories(request):
     """获取所有比赛类别"""
     categories = Category.objects.prefetch_related('participants').all()
+    categories, _, filter_error = apply_judge_category_filter(
+        categories,
+        normalize_text(request.GET.get('token')),
+    )
+    if filter_error:
+        return filter_error
     result = []
     for cat in categories:
         result.append({
@@ -657,6 +735,14 @@ def get_participants(request):
     """获取参赛选手列表，可按类别筛选"""
     category_id = request.GET.get('category_id')
     qs = Participant.objects.select_related('category').all()
+    category_qs = Category.objects.all()
+    category_qs, _, filter_error = apply_judge_category_filter(
+        category_qs,
+        normalize_text(request.GET.get('token')),
+    )
+    if filter_error:
+        return filter_error
+    qs = qs.filter(category_id__in=category_qs.values('id'))
     if category_id:
         qs = qs.filter(category_id=category_id)
 
@@ -695,14 +781,20 @@ def submit_scores(request):
         return error_response('缺少必要数据: token, category_id, scores')
 
     try:
-        judge = Judge.objects.get(token=token, is_active=True)
-    except Judge.DoesNotExist:
+        judge = Judge.objects.prefetch_related('allowed_categories').get(
+            token=token,
+            is_active=True,
+        )
+    except (Judge.DoesNotExist, ValidationError, ValueError):
         return error_response('无效的评委令牌', 403)
 
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         return error_response('类别不存在')
+
+    if not judge_can_access_category(judge, category):
+        return error_response(f'您没有权限提交【{category.name}】的评分', 403)
 
     has_submitted = Score.objects.filter(
         judge=judge,
@@ -786,8 +878,11 @@ def submit_votes(request):
         return error_response('缺少必要数据: token, category_id, votes')
 
     try:
-        judge = Judge.objects.get(token=token, is_active=True)
-    except Judge.DoesNotExist:
+        judge = Judge.objects.prefetch_related('allowed_categories').get(
+            token=token,
+            is_active=True,
+        )
+    except (Judge.DoesNotExist, ValidationError, ValueError):
         return error_response('无效的评委令牌', 403)
 
     config = SiteConfig.get_config()
@@ -798,6 +893,9 @@ def submit_votes(request):
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         return error_response('类别不存在')
+
+    if not judge_can_access_category(judge, category):
+        return error_response(f'您没有权限提交【{category.name}】的投票', 403)
 
     # 检查是否已经提交过
     has_submitted = Vote.objects.filter(
@@ -1207,20 +1305,8 @@ def get_judges(request):
     if not _verify_admin(request):
         return error_response('权限不足', 403)
 
-    judges = Judge.objects.all().order_by('order', 'id')
-    result = []
-    for judge in judges:
-        result.append({
-            'id': judge.id,
-            'order': judge.order,
-            'name': judge.name,
-            'display_name': judge_display_name(judge),
-            'token': str(judge.token),
-            'is_active': judge.is_active,
-            'scoring_url': judge.get_scoring_url(),
-            'qrcode_url': f'/api/judge/{judge.token}/qrcode/',
-            'created_at': judge.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-        })
+    judges = Judge.objects.prefetch_related('allowed_categories').all().order_by('order', 'id')
+    result = [serialize_judge(judge) for judge in judges]
     return json_response({'judges': result})
 
 
@@ -1282,6 +1368,16 @@ def update_judge(request, judge_id):
     if order <= 0:
         return error_response('评委序号必须大于 0')
 
+    allowed_categories = None
+    if 'allowed_category_ids' in data:
+        try:
+            allowed_category_ids = parse_category_id_list(data.get('allowed_category_ids'))
+        except ValueError as exc:
+            return error_response(str(exc))
+        allowed_categories = list(Category.objects.filter(id__in=allowed_category_ids))
+        if len(allowed_categories) != len(allowed_category_ids):
+            return error_response('项目授权包含不存在的类别')
+
     duplicate = Judge.objects.exclude(id=judge.id).filter(order=order).exists()
     if duplicate:
         return error_response('该评委序号已被使用')
@@ -1289,19 +1385,13 @@ def update_judge(request, judge_id):
     judge.name = name
     judge.order = order
     judge.save()
+    if allowed_categories is not None:
+        judge.allowed_categories.set(allowed_categories)
 
     return json_response({
         'success': True,
         'message': '评委信息已更新',
-        'judge': {
-            'id': judge.id,
-            'order': judge.order,
-            'name': judge.name,
-            'display_name': judge_display_name(judge),
-            'token': str(judge.token),
-            'is_active': judge.is_active,
-            'scoring_url': judge.get_scoring_url(),
-        }
+        'judge': serialize_judge(judge),
     })
 
 

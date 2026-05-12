@@ -61,6 +61,9 @@ interface JudgeRow {
   display_name?: string;
   token: string;
   is_active: boolean;
+  allowed_category_ids: number[];
+  allowed_category_names: string[];
+  all_categories_allowed: boolean;
   scoring_url: string;
   qrcode_url: string;
   created_at: string;
@@ -117,6 +120,8 @@ const editTargetJudge = ref<JudgeRow | null>(null);
 const editJudgeForm = reactive({
   order: 1,
   name: "",
+  all_categories_allowed: true,
+  allowed_category_ids: [] as number[],
 });
 const editJudgeLoading = ref(false);
 
@@ -820,6 +825,8 @@ function openEditJudgeModal(judge: JudgeRow) {
   editTargetJudge.value = judge;
   editJudgeForm.order = judge.order;
   editJudgeForm.name = judge.name;
+  editJudgeForm.all_categories_allowed = judge.all_categories_allowed;
+  editJudgeForm.allowed_category_ids = [...(judge.allowed_category_ids || [])];
   editJudgeModalVisible.value = true;
 }
 
@@ -828,6 +835,22 @@ function closeEditJudgeModal() {
   editTargetJudge.value = null;
   editJudgeForm.order = 1;
   editJudgeForm.name = "";
+  editJudgeForm.all_categories_allowed = true;
+  editJudgeForm.allowed_category_ids = [];
+}
+
+function getJudgeAllowedCategoryText(judge: JudgeRow) {
+  if (judge.all_categories_allowed) return "全部项目";
+  return judge.allowed_category_names?.length
+    ? judge.allowed_category_names.join("、")
+    : "未授权";
+}
+
+function isJudgeAllowedForCategory(categoryId: number, judge: JudgeRow) {
+  return (
+    judge.all_categories_allowed ||
+    (judge.allowed_category_ids || []).includes(categoryId)
+  );
 }
 
 async function handleEditJudge() {
@@ -843,6 +866,14 @@ async function handleEditJudge() {
     return;
   }
 
+  if (
+    !editJudgeForm.all_categories_allowed &&
+    editJudgeForm.allowed_category_ids.length === 0
+  ) {
+    await showAlert("请选择该评委可参与的项目，或勾选全部项目");
+    return;
+  }
+
   editJudgeLoading.value = true;
   try {
     const res = await fetch(
@@ -853,6 +884,9 @@ async function handleEditJudge() {
         body: JSON.stringify({
           order: editJudgeForm.order,
           name: editJudgeForm.name.trim(),
+          allowed_category_ids: editJudgeForm.all_categories_allowed
+            ? []
+            : editJudgeForm.allowed_category_ids,
         }),
       },
     );
@@ -1657,7 +1691,9 @@ const sectionCtx = {
   formatQRFileName,
   getJudgeCategoryCompletedCount,
   getJudgeCategoryProgressPercent,
+  getJudgeAllowedCategoryText,
   getJudgeDisplayName,
+  isJudgeAllowedForCategory,
   getJudgeScoreStatus,
   getJudgeVoteCount,
   getJudgeVoteStatus,

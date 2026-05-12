@@ -6,6 +6,7 @@ const {
   confirmDeleteJudge,
   copyLink,
   exportAllJudgeQrcodes,
+  getJudgeAllowedCategoryText,
   getJudgeDisplayName,
   handleCreateJudges,
   judgeQrFilenamePattern,
@@ -43,6 +44,7 @@ const {
   clearJudgesConfirmPassword,
   clearJudgesLoading,
   handleClearJudges,
+  store,
 } = props.ctx;
 </script>
 
@@ -173,6 +175,7 @@ const {
               <th>序号</th>
               <th>名称</th>
               <th>状态</th>
+              <th>授权项目</th>
               <th>评分链接</th>
               <th>ID</th>
               <th>操作</th>
@@ -189,6 +192,7 @@ const {
                   {{ judge.is_active ? "启用" : "禁用" }}
                 </span>
               </td>
+              <td>{{ getJudgeAllowedCategoryText(judge) }}</td>
               <td class="ellipsis-cell">{{ judge.scoring_url }}</td>
               <td>
                 <span class="id-badge">{{ judge.id }}</span>
@@ -319,6 +323,37 @@ const {
             @keyup.enter="handleEditJudge"
           />
         </label>
+        <div class="form-field">
+          <span>可参与项目</span>
+          <label class="checkbox-label">
+            <input
+              v-model="editJudgeForm.all_categories_allowed"
+              type="checkbox"
+            />
+            <span class="checkbox-text">全部项目均可评分/投票</span>
+          </label>
+          <div
+            class="category-checkbox-list"
+            :class="{ disabled: editJudgeForm.all_categories_allowed }"
+          >
+            <label
+              v-for="category in store.categories"
+              :key="category.id"
+              class="checkbox-label category-checkbox"
+            >
+              <input
+                v-model="editJudgeForm.allowed_category_ids"
+                type="checkbox"
+                :value="category.id"
+                :disabled="editJudgeForm.all_categories_allowed"
+              />
+              <span class="checkbox-text">{{ category.name }}</span>
+            </label>
+          </div>
+          <small class="form-tip">
+            不勾选“全部项目”时，只能访问并提交已选项目。
+          </small>
+        </div>
       </div>
       <div class="button-row compact">
         <button class="btn btn-outline" @click="closeEditJudgeModal">

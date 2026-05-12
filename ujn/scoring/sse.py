@@ -99,6 +99,23 @@ def _format_score_value(value):
     return float(decimal_value)
 
 
+def _get_judge_allowed_category_ids(judge):
+    return [category.id for category in judge.allowed_categories.all()]
+
+
+def _serialize_judge(judge):
+    allowed_categories = list(judge.allowed_categories.all())
+    allowed_category_ids = [category.id for category in allowed_categories]
+    return {
+        'id': judge.id,
+        'order': judge.order,
+        'name': judge.name,
+        'allowed_category_ids': allowed_category_ids,
+        'allowed_category_names': [category.name for category in allowed_categories],
+        'all_categories_allowed': len(allowed_category_ids) == 0,
+    }
+
+
 def _get_category_scoring_mode(category):
     if category.scoring_mode == 'default':
         config = SiteConfig.get_config()
@@ -306,7 +323,11 @@ def build_scores_data():
         Vote.objects.select_related('judge', 'participant', 'category').all()
     )
     categories = list(Category.objects.prefetch_related('participants').all())
-    judges = list(Judge.objects.filter(is_active=True).order_by('order', 'id'))
+    judges = list(
+        Judge.objects.filter(is_active=True)
+        .prefetch_related('allowed_categories')
+        .order_by('order', 'id')
+    )
 
     # 处理分数模式数据
     scores_by_judge_category = defaultdict(dict)
@@ -329,7 +350,7 @@ def build_scores_data():
 
     result = {
         'categories': [],
-        'judges': [{'id': j.id, 'order': j.order, 'name': j.name} for j in judges],
+        'judges': [_serialize_judge(judge) for judge in judges],
         'scores': {},
         'votes': {},
         'statistics': {},

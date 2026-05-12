@@ -26,7 +26,7 @@ function handleVisibilityChange() {
 onMounted(async () => {
   try {
     await store.authenticateJudge(props.token)
-    await store.fetchCategories()
+    await store.fetchCategories(props.token)
     syncTimer = window.setInterval(syncJudgeProgress, 8000)
     document.addEventListener('visibilitychange', handleVisibilityChange)
   } catch (e: any) {

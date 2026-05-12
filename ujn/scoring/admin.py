@@ -85,11 +85,28 @@ class ParticipantAdmin(admin.ModelAdmin):
 
 @admin.register(Judge)
 class JudgeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'token', 'is_active', 'scoring_url_link', 'qrcode_link', 'created_at')
+    list_display = (
+        'name',
+        'token',
+        'is_active',
+        'allowed_categories_display',
+        'scoring_url_link',
+        'qrcode_link',
+        'created_at',
+    )
     list_filter = ('is_active',)
     search_fields = ('name',)
     readonly_fields = ('token', 'scoring_url_display', 'qrcode_preview')
+    filter_horizontal = ('allowed_categories',)
     actions = ['activate_judges', 'deactivate_judges']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('allowed_categories')
+
+    def allowed_categories_display(self, obj):
+        categories = [category.name for category in obj.allowed_categories.all()]
+        return '全部项目' if not categories else '、'.join(categories)
+    allowed_categories_display.short_description = '授权项目'
 
     def scoring_url_link(self, obj):
         url = obj.get_scoring_url()

@@ -245,6 +245,13 @@ class Judge(models.Model):
     order = models.IntegerField(default=1, verbose_name="序号")
     name = models.CharField(max_length=100, verbose_name="评委姓名")
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, verbose_name="访问令牌")
+    allowed_categories = models.ManyToManyField(
+        Category,
+        blank=True,
+        related_name='allowed_judges',
+        verbose_name="可评分/投票类别",
+        help_text="为空表示该评委可参与全部类别。",
+    )
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 

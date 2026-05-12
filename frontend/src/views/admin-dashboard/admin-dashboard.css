@@ -495,6 +495,19 @@
 .admin-dashboard .checkbox-text {font-size: 14px;
   color: var(--text-primary);}
 
+.admin-dashboard .category-checkbox-list {display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 4px 12px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: var(--radius-md);
+  background: #fafafa;}
+
+.admin-dashboard .category-checkbox-list.disabled {opacity: 0.55;}
+
+.admin-dashboard .category-checkbox {padding: 4px 0;}
+
 .admin-dashboard .color-picker-wrapper {display: flex;
   align-items: center;
   gap: 12px;}

@@ -107,6 +107,111 @@ class RankingDisplayTests(TestCase):
         self.assertEqual(row[11], '87、100')
 
 
+class JudgeCategoryAccessTests(TestCase):
+    def setUp(self):
+        views._rate_limit_store.clear()
+        config = SiteConfig.get_config()
+        config.admin_password = 'admin123'
+        config.scoring_mode = 'score'
+        config.save()
+
+        self.score_category = Category.objects.create(name='评分项目', order=1)
+        self.vote_category = Category.objects.create(
+            name='投票项目',
+            order=2,
+            scoring_mode='vote',
+            vote_select_count=1,
+        )
+        self.score_participant = Participant.objects.create(
+            name='评分选手',
+            category=self.score_category,
+            order=1,
+        )
+        self.vote_participant = Participant.objects.create(
+            name='投票选手',
+            category=self.vote_category,
+            order=1,
+        )
+        self.judge = Judge.objects.create(name='评委A', order=1)
+        self.judge.allowed_categories.add(self.score_category)
+
+    def test_judge_auth_and_categories_are_limited_to_allowed_categories(self):
+        auth_response = self.client.get(f'/api/judge/{self.judge.token}/auth/')
+        categories_response = self.client.get(
+            '/api/categories/',
+            {'token': str(self.judge.token)},
+        )
+
+        self.assertEqual(auth_response.status_code, 200)
+        auth_data = auth_response.json()
+        self.assertFalse(auth_data['all_categories_allowed'])
+        self.assertEqual(auth_data['allowed_category_ids'], [self.score_category.id])
+        self.assertEqual(
+            list(map(int, auth_data['category_modes'].keys())),
+            [self.score_category.id],
+        )
+
+        self.assertEqual(categories_response.status_code, 200)
+        category_ids = [item['id'] for item in categories_response.json()['categories']]
+        self.assertEqual(category_ids, [self.score_category.id])
+
+    def test_submit_score_rejects_unallowed_category(self):
+        payload = {
+            'token': str(self.judge.token),
+            'category_id': self.vote_category.id,
+            'scores': [
+                {'participant_id': self.vote_participant.id, 'score': 88},
+            ],
+        }
+
+        response = self.client.post(
+            '/api/submit/',
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('没有权限', response.json()['error'])
+        self.assertFalse(Score.objects.filter(judge=self.judge).exists())
+
+    def test_submit_vote_rejects_unallowed_category(self):
+        payload = {
+            'token': str(self.judge.token),
+            'category_id': self.vote_category.id,
+            'votes': [{'participant_id': self.vote_participant.id}],
+        }
+
+        response = self.client.post(
+            '/api/submit/vote/',
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('没有权限', response.json()['error'])
+
+    def test_admin_can_update_judge_allowed_categories(self):
+        response = self.client.post(
+            f'/api/admin/judges/{self.judge.id}/update/?password=admin123',
+            data=json.dumps({
+                'name': self.judge.name,
+                'order': self.judge.order,
+                'allowed_category_ids': [self.vote_category.id],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.judge.refresh_from_db()
+        self.assertEqual(
+            list(self.judge.allowed_categories.values_list('id', flat=True)),
+            [self.vote_category.id],
+        )
+        data = response.json()['judge']
+        self.assertFalse(data['all_categories_allowed'])
+        self.assertEqual(data['allowed_category_ids'], [self.vote_category.id])
+
+
 class JudgeSubmissionStateTests(TestCase):
     def setUp(self):
         views._rate_limit_store.clear()

@@ -9,6 +9,7 @@ const {
   getJudgeScoreStatus,
   getJudgeVoteCount,
   getJudgeVoteStatus,
+  isJudgeAllowedForCategory,
   getParticipantRank,
   getParticipantStat,
   getSortState,
@@ -27,9 +28,12 @@ function formatDroppedScores(stat: any, field: "dropped_lows" | "dropped_highs")
   return values.length ? values.join("、") : "-";
 }
 
-function getJudgeCountText(stat: any) {
+function getJudgeCountText(categoryId: number, stat: any) {
   if (!stat) return "-";
-  return `${stat.count}/${scoresData.value?.judges?.length || stat.count}`;
+  const allowedJudgeCount = (scoresData.value?.judges || []).filter((judge: any) =>
+    isJudgeAllowedForCategory(categoryId, judge),
+  ).length;
+  return `${stat.count}/${allowedJudgeCount || stat.count}`;
 }
 </script>
 
@@ -164,22 +168,34 @@ function getJudgeCountText(stat: any) {
                       <span
                         class="status-badge"
                         :class="{
-                          active: getJudgeVoteStatus(category.id, judge.id),
+                          active:
+                            isJudgeAllowedForCategory(category.id, judge) &&
+                            getJudgeVoteStatus(category.id, judge.id),
                         }"
                       >
                         {{
-                          getJudgeVoteStatus(category.id, judge.id)
+                          !isJudgeAllowedForCategory(category.id, judge)
+                            ? "不参与"
+                            : getJudgeVoteStatus(category.id, judge.id)
                             ? "已完成"
                             : "未完成"
                         }}
                       </span>
                     </td>
-                    <td>{{ getJudgeVoteCount(category.id, judge.id) }}</td>
+                    <td>
+                      {{
+                        isJudgeAllowedForCategory(category.id, judge)
+                          ? getJudgeVoteCount(category.id, judge.id)
+                          : "-"
+                      }}
+                    </td>
                     <td class="progress-summary-cell">
                       <div class="progress-summary-content">
                         <span class="progress-fraction">
                           {{
-                            getJudgeVoteStatus(category.id, judge.id)
+                            !isJudgeAllowedForCategory(category.id, judge)
+                              ? "-"
+                              : getJudgeVoteStatus(category.id, judge.id)
                               ? "1/1"
                               : "0/1"
                           }}
@@ -190,21 +206,24 @@ function getJudgeCountText(stat: any) {
                               class="progress-bar-fill"
                               :class="{
                                 low: !getJudgeVoteStatus(category.id, judge.id),
-                                active: getJudgeVoteStatus(
-                                  category.id,
-                                  judge.id,
-                                ),
+                                active:
+                                  isJudgeAllowedForCategory(category.id, judge) &&
+                                  getJudgeVoteStatus(category.id, judge.id),
                               }"
                               :style="{
-                                width: getJudgeVoteStatus(category.id, judge.id)
-                                  ? '100%'
-                                  : '0%',
+                                width:
+                                  isJudgeAllowedForCategory(category.id, judge) &&
+                                  getJudgeVoteStatus(category.id, judge.id)
+                                    ? '100%'
+                                    : '0%',
                               }"
                             ></div>
                           </div>
                           <span class="progress-text">
                             {{
-                              getJudgeVoteStatus(category.id, judge.id)
+                              !isJudgeAllowedForCategory(category.id, judge)
+                                ? "-"
+                                : getJudgeVoteStatus(category.id, judge.id)
                                 ? "100%"
                                 : "0%"
                             }}
@@ -229,19 +248,23 @@ function getJudgeCountText(stat: any) {
                       <span
                         class="status-badge"
                         :class="{
-                          active: getJudgeScoreStatus(
-                            category.id,
-                            judge.id,
-                            participant.id,
-                          ),
+                          active:
+                            isJudgeAllowedForCategory(category.id, judge) &&
+                            getJudgeScoreStatus(
+                              category.id,
+                              judge.id,
+                              participant.id,
+                            ),
                         }"
                       >
                         {{
-                          getJudgeScoreStatus(
-                            category.id,
-                            judge.id,
-                            participant.id,
-                          )
+                          !isJudgeAllowedForCategory(category.id, judge)
+                            ? "不参与"
+                            : getJudgeScoreStatus(
+                                category.id,
+                                judge.id,
+                                participant.id,
+                              )
                             ? "已打分"
                             : "未打分"
                         }}
@@ -251,8 +274,10 @@ function getJudgeCountText(stat: any) {
                       <div class="progress-summary-content">
                         <span class="progress-fraction">
                           {{
-                            getJudgeCategoryCompletedCount(category, judge.id)
-                          }}/{{ category.participants.length }}
+                            isJudgeAllowedForCategory(category.id, judge)
+                              ? `${getJudgeCategoryCompletedCount(category, judge.id)}/${category.participants.length}`
+                              : "-"
+                          }}
                         </span>
                         <div class="progress-bar-wrapper">
                           <div class="progress-bar">
@@ -276,21 +301,25 @@ function getJudgeCountText(stat: any) {
                               }"
                               :style="{
                                 width:
-                                  getJudgeCategoryProgressPercent(
-                                    category,
-                                    judge.id,
-                                  ) + '%',
+                                  isJudgeAllowedForCategory(category.id, judge)
+                                    ? getJudgeCategoryProgressPercent(
+                                        category,
+                                        judge.id,
+                                      ) + '%'
+                                    : '0%',
                               }"
                             ></div>
                           </div>
-                          <span class="progress-text"
-                            >{{
-                              getJudgeCategoryProgressPercent(
-                                category,
-                                judge.id,
-                              )
-                            }}%</span
-                          >
+                          <span class="progress-text">
+                            {{
+                              isJudgeAllowedForCategory(category.id, judge)
+                                ? getJudgeCategoryProgressPercent(
+                                    category,
+                                    judge.id,
+                                  ) + "%"
+                                : "-"
+                            }}
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -573,6 +602,7 @@ function getJudgeCountText(stat: any) {
                     <span v-if="getParticipantStat(category.id, participant.id)"
                       >{{
                         getJudgeCountText(
+                          category.id,
                           getParticipantStat(category.id, participant.id),
                         )
                       }}</span
