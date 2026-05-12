@@ -2,18 +2,25 @@
 // @ts-nocheck
 const props = defineProps<{ ctx: any }>();
 const {
+  allJudgesSelected,
+  batchJudgeAllCategoriesAllowed,
+  batchJudgeAllowedCategoryIds,
+  batchJudgePermissionsLoading,
+  clearSelectedJudges,
   confirmClearJudges,
   confirmDeleteJudge,
   copyLink,
   exportAllJudgeQrcodes,
   getJudgeAllowedCategoryText,
   getJudgeDisplayName,
+  handleBatchUpdateJudgePermissions,
   handleCreateJudges,
   judgeQrFilenamePattern,
   judges,
   loadingJudges,
   newJudgeCount,
   openEditJudgeModal,
+  selectedJudgeIds,
   showJudgeQr,
   // 编辑评委弹窗
   editJudgeModalVisible,
@@ -45,6 +52,7 @@ const {
   clearJudgesLoading,
   handleClearJudges,
   store,
+  toggleAllJudgesSelection,
 } = props.ctx;
 </script>
 
@@ -150,6 +158,56 @@ const {
           </button>
         </div>
       </div>
+      <div class="batch-permission-panel">
+        <div class="batch-permission-header">
+          <div>
+            <h4>批量设置评委项目权限</h4>
+            <p>已选择 {{ selectedJudgeIds.length }} 名评委</p>
+          </div>
+          <div class="button-row compact">
+            <button class="btn btn-outline btn-sm" @click="toggleAllJudgesSelection">
+              {{ allJudgesSelected ? "取消全选" : "全选评委" }}
+            </button>
+            <button class="btn btn-outline btn-sm" @click="clearSelectedJudges">
+              清空选择
+            </button>
+          </div>
+        </div>
+        <label class="checkbox-label">
+          <input v-model="batchJudgeAllCategoriesAllowed" type="checkbox" />
+          <span class="checkbox-text">批量设置为全部项目均可评分/投票</span>
+        </label>
+        <div
+          class="category-checkbox-list"
+          :class="{ disabled: batchJudgeAllCategoriesAllowed }"
+        >
+          <label
+            v-for="category in store.categories"
+            :key="category.id"
+            class="checkbox-label category-checkbox"
+          >
+            <input
+              v-model="batchJudgeAllowedCategoryIds"
+              type="checkbox"
+              :value="category.id"
+              :disabled="batchJudgeAllCategoriesAllowed"
+            />
+            <span class="checkbox-text">{{ category.name }}</span>
+          </label>
+        </div>
+        <div class="button-row compact batch-permission-actions">
+          <button
+            class="btn btn-primary"
+            :disabled="
+              batchJudgePermissionsLoading || selectedJudgeIds.length === 0
+            "
+            @click="handleBatchUpdateJudgePermissions"
+          >
+            <span v-if="batchJudgePermissionsLoading" class="spinner"></span>
+            {{ batchJudgePermissionsLoading ? "保存中..." : "批量保存授权" }}
+          </button>
+        </div>
+      </div>
       <div v-if="loadingJudges" class="loading-state">
         <div class="spinner"></div>
         <p>加载中...</p>
@@ -172,6 +230,13 @@ const {
         <table class="data-table">
           <thead>
             <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  :checked="allJudgesSelected"
+                  @change="toggleAllJudgesSelection"
+                />
+              </th>
               <th>序号</th>
               <th>名称</th>
               <th>状态</th>
@@ -183,6 +248,13 @@ const {
           </thead>
           <tbody>
             <tr v-for="judge in judges" :key="judge.id">
+              <td>
+                <input
+                  v-model="selectedJudgeIds"
+                  type="checkbox"
+                  :value="judge.id"
+                />
+              </td>
               <td>{{ judge.order }}</td>
               <td>
                 <strong>{{ getJudgeDisplayName(judge) }}</strong>

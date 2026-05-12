@@ -17,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from openpyxl import Workbook, load_workbook
 
-from django.db import models
+from django.db import models, transaction
 from .models import Category, Judge, Participant, Score, SiteConfig, Vote
 from .sse import score_event_bus, build_scores_data
 
@@ -258,6 +258,22 @@ def parse_category_id_list(value):
             raise ValueError('项目授权包含无效ID')
         category_ids.append(category_id)
     return sorted(set(category_ids))
+
+
+def parse_judge_id_list(value):
+    if not isinstance(value, list):
+        raise ValueError('评委列表必须是数组')
+
+    judge_ids = []
+    for item in value:
+        try:
+            judge_id = int(item)
+        except (TypeError, ValueError):
+            raise ValueError('评委列表包含无效ID')
+        if judge_id <= 0:
+            raise ValueError('评委列表包含无效ID')
+        judge_ids.append(judge_id)
+    return sorted(set(judge_ids))
 
 
 def apply_judge_category_filter(queryset, token):
@@ -1392,6 +1408,53 @@ def update_judge(request, judge_id):
         'success': True,
         'message': '评委信息已更新',
         'judge': serialize_judge(judge),
+    })
+
+
+@csrf_exempt
+@require_POST
+def batch_update_judge_permissions(request):
+    """批量更新评委可参与项目（管理员）。"""
+    if not _verify_admin(request):
+        return error_response('权限不足', 403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return error_response('无效的JSON格式')
+
+    try:
+        judge_ids = parse_judge_id_list(data.get('judge_ids'))
+        allowed_category_ids = parse_category_id_list(data.get('allowed_category_ids'))
+    except ValueError as exc:
+        return error_response(str(exc))
+
+    if not judge_ids:
+        return error_response('请选择至少一名评委')
+
+    judges = list(Judge.objects.filter(id__in=judge_ids).order_by('order', 'id'))
+    if len(judges) != len(judge_ids):
+        return error_response('评委列表包含不存在的评委')
+
+    allowed_categories = list(Category.objects.filter(id__in=allowed_category_ids))
+    if len(allowed_categories) != len(allowed_category_ids):
+        return error_response('项目授权包含不存在的类别')
+
+    with transaction.atomic():
+        for judge in judges:
+            judge.allowed_categories.set(allowed_categories)
+
+    updated_judges = (
+        Judge.objects.filter(id__in=judge_ids)
+        .prefetch_related('allowed_categories')
+        .order_by('order', 'id')
+    )
+    permission_text = '全部项目' if not allowed_category_ids else f'{len(allowed_category_ids)} 个项目'
+    return json_response({
+        'success': True,
+        'message': f'已批量更新 {len(judges)} 名评委的授权项目：{permission_text}',
+        'count': len(judges),
+        'judges': [serialize_judge(judge) for judge in updated_judges],
     })
 
 

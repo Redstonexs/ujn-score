@@ -211,6 +211,49 @@ class JudgeCategoryAccessTests(TestCase):
         self.assertFalse(data['all_categories_allowed'])
         self.assertEqual(data['allowed_category_ids'], [self.vote_category.id])
 
+    def test_admin_can_batch_update_judge_allowed_categories(self):
+        other_judge = Judge.objects.create(name='评委B', order=2)
+        other_judge.allowed_categories.add(self.vote_category)
+
+        response = self.client.post(
+            '/api/admin/judges/permissions/batch/?password=admin123',
+            data=json.dumps({
+                'judge_ids': [self.judge.id, other_judge.id],
+                'allowed_category_ids': [self.vote_category.id],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['count'], 2)
+        self.assertEqual(
+            list(self.judge.allowed_categories.values_list('id', flat=True)),
+            [self.vote_category.id],
+        )
+        self.assertEqual(
+            list(other_judge.allowed_categories.values_list('id', flat=True)),
+            [self.vote_category.id],
+        )
+
+    def test_admin_can_batch_allow_all_categories_with_empty_category_list(self):
+        other_judge = Judge.objects.create(name='评委B', order=2)
+        other_judge.allowed_categories.add(self.vote_category)
+
+        response = self.client.post(
+            '/api/admin/judges/permissions/batch/?password=admin123',
+            data=json.dumps({
+                'judge_ids': [self.judge.id, other_judge.id],
+                'allowed_category_ids': [],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.judge.allowed_categories.count(), 0)
+        self.assertEqual(other_judge.allowed_categories.count(), 0)
+        for item in response.json()['judges']:
+            self.assertTrue(item['all_categories_allowed'])
+
 
 class JudgeSubmissionStateTests(TestCase):
     def setUp(self):

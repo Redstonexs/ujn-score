@@ -169,6 +169,27 @@
 
 .admin-dashboard .qr-pattern-field {flex: 1 1 360px;}
 
+.admin-dashboard .batch-permission-panel {margin-bottom: 20px;
+  padding: 16px;
+  background: rgba(24, 144, 255, 0.04);
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  border-radius: var(--radius-md);}
+
+.admin-dashboard .batch-permission-header {display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;}
+
+.admin-dashboard .batch-permission-header h4 {margin: 0 0 4px;
+  color: var(--text-primary);}
+
+.admin-dashboard .batch-permission-header p {margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;}
+
+.admin-dashboard .batch-permission-actions {margin-top: 12px;}
+
 .admin-dashboard .filter-panel {margin-bottom: 20px;
   padding: 16px;
   background: rgba(24, 144, 255, 0.04);

@@ -29,6 +29,7 @@ urlpatterns = [
     path('admin/clear/', views.clear_scores, name='clear_scores'),
     path('admin/judges/', views.get_judges, name='get_judges'),
     path('admin/judges/batch/', views.batch_create_judges, name='batch_create_judges'),
+    path('admin/judges/permissions/batch/', views.batch_update_judge_permissions, name='batch_update_judge_permissions'),
     path('admin/judges/qrcodes/export/', views.export_all_judge_qrcodes, name='export_all_judge_qrcodes'),
     path('admin/judges/<int:judge_id>/update/', views.update_judge, name='update_judge'),
     path('admin/judges/<int:judge_id>/delete/', views.delete_judge, name='delete_judge'),

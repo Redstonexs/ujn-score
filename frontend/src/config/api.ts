@@ -35,6 +35,7 @@ export const API = {
   adminClear: `${API_BASE_URL}/api/admin/clear/`,
   adminJudges: `${API_BASE_URL}/api/admin/judges/`,
   adminJudgesBatch: `${API_BASE_URL}/api/admin/judges/batch/`,
+  adminJudgePermissionsBatch: `${API_BASE_URL}/api/admin/judges/permissions/batch/`,
   adminJudgeQrcodesExport: `${API_BASE_URL}/api/admin/judges/qrcodes/export/`,
   adminImport: `${API_BASE_URL}/api/admin/import/`,
   adminJudgeUpdate: (id: number) =>

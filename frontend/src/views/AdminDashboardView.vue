@@ -87,6 +87,13 @@ const saveMessage = ref("");
 const clearBackgroundRequested = ref(false);
 
 const newJudgeCount = ref(5);
+const selectedJudgeIds = ref<number[]>([]);
+const batchJudgeAllCategoriesAllowed = ref(true);
+const batchJudgeAllowedCategoryIds = ref<number[]>([]);
+const batchJudgePermissionsLoading = ref(false);
+const allJudgesSelected = computed(
+  () => judges.value.length > 0 && selectedJudgeIds.value.length === judges.value.length,
+);
 
 // 手动导入相关
 const manualImportData = ref("");
@@ -364,6 +371,10 @@ async function loadJudges() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "加载评委失败");
     judges.value = data.judges || [];
+    const existingJudgeIds = new Set(judges.value.map((judge) => judge.id));
+    selectedJudgeIds.value = selectedJudgeIds.value.filter((judgeId) =>
+      existingJudgeIds.has(judgeId),
+    );
   } catch (error) {
     console.error(error);
   } finally {
@@ -598,6 +609,57 @@ async function handleImport() {
     importResult.value = error.message || "导入失败";
   } finally {
     importing.value = false;
+  }
+}
+
+function toggleAllJudgesSelection() {
+  selectedJudgeIds.value = allJudgesSelected.value
+    ? []
+    : judges.value.map((judge) => judge.id);
+}
+
+function clearSelectedJudges() {
+  selectedJudgeIds.value = [];
+}
+
+async function handleBatchUpdateJudgePermissions() {
+  if (selectedJudgeIds.value.length === 0) {
+    await showAlert("请先选择要批量修改的评委");
+    return;
+  }
+
+  if (
+    !batchJudgeAllCategoriesAllowed.value &&
+    batchJudgeAllowedCategoryIds.value.length === 0
+  ) {
+    await showAlert("请选择要授权的项目，或勾选全部项目");
+    return;
+  }
+
+  batchJudgePermissionsLoading.value = true;
+  try {
+    const res = await fetch(
+      `${API.adminJudgePermissionsBatch}?password=${encodeURIComponent(store.adminPassword)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          judge_ids: selectedJudgeIds.value,
+          allowed_category_ids: batchJudgeAllCategoriesAllowed.value
+            ? []
+            : batchJudgeAllowedCategoryIds.value,
+        }),
+      },
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "批量更新失败");
+
+    await showAlert(data.message || "评委授权已批量更新");
+    await loadJudges();
+  } catch (err: any) {
+    await showAlert(err.message || "批量更新评委授权失败");
+  } finally {
+    batchJudgePermissionsLoading.value = false;
   }
 }
 
@@ -1624,8 +1686,12 @@ const sectionCtx = {
   QR_FILENAME_PATTERN_STORAGE_KEY,
   activeTab,
   adminQrUrl,
+  allJudgesSelected,
   backgroundFile,
   backgroundPreview,
+  batchJudgeAllCategoriesAllowed,
+  batchJudgeAllowedCategoryIds,
+  batchJudgePermissionsLoading,
   clearBackground,
   clearBackgroundRequested,
   clearCategoriesConfirmPassword,
@@ -1649,6 +1715,7 @@ const sectionCtx = {
   closeEditJudgeModal,
   closeEditParticipantModal,
   closeQrModal,
+  clearSelectedJudges,
   configForm,
   confirmClearCategories,
   confirmClearJudges,
@@ -1716,6 +1783,7 @@ const sectionCtx = {
   handleCreateCategory,
   handleCreateJudges,
   handleCreateParticipant,
+  handleBatchUpdateJudgePermissions,
   handleDeleteCategory,
   handleDeleteJudge,
   handleDeleteParticipant,
@@ -1774,6 +1842,7 @@ const sectionCtx = {
   savingConfig,
   scoreRuleText,
   scoresData,
+  selectedJudgeIds,
   showAdminQr,
   showAlert,
   showConfirm,
@@ -1782,6 +1851,7 @@ const sectionCtx = {
   sortStates,
   store,
   switchTab,
+  toggleAllJudgesSelection,
   toggleParticipantSort,
   toggleSort,
   updateCategoryVoteSelectCount,
