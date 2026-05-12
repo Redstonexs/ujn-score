@@ -331,7 +331,7 @@ onMounted(async () => {
     loadJudges(),
     loadParticipants(),
   ]);
-  connectSSE();
+  await loadScores();
 });
 
 onUnmounted(() => {
@@ -1245,8 +1245,12 @@ function getJudgeCategoryProgressPercent(category: any, judgeId: number) {
 
 function switchTab(tab: TabKey) {
   activeTab.value = tab;
-  if (tab === "scores" && !scoresData.value && sseStatus.value !== "connected") {
-    loadScores();
+  if (tab === "scores") {
+    if (sseStatus.value !== "connected" && sseStatus.value !== "connecting") {
+      connectSSE();
+    }
+  } else if (sseStatus.value !== "disconnected") {
+    disconnectSSE();
   }
   if (tab === "participants") {
     loadParticipants();

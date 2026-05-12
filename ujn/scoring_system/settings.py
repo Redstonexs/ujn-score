@@ -109,6 +109,9 @@ if USE_MYSQL:
             'PORT': os.getenv('MYSQL_PORT', '3307'),
             'OPTIONS': {
                 'charset': 'utf8mb4',
+                'connect_timeout': int(os.getenv('MYSQL_CONNECT_TIMEOUT', '5')),
+                'read_timeout': int(os.getenv('MYSQL_READ_TIMEOUT', '10')),
+                'write_timeout': int(os.getenv('MYSQL_WRITE_TIMEOUT', '10')),
             },
         }
     }

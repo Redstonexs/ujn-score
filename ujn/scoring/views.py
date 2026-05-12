@@ -593,7 +593,7 @@ def build_judge_submission_state(judge):
     submitted_scores = defaultdict(dict)
     judge_scores = (
         Score.objects.filter(judge=judge)
-        .select_related('participant')
+        .select_related('participant', 'participant__category')
         .order_by(
             'participant__category__order',
             'participant__order',
@@ -657,7 +657,7 @@ def judge_auth(request, token):
     allowed_category_ids = get_judge_allowed_category_ids(judge)
     
     # 获取该评委可参与类别的打分模式信息。未配置授权时默认可参与全部类别。
-    categories = Category.objects.all()
+    categories = Category.objects.prefetch_related('participants').all()
     if allowed_category_ids:
         categories = categories.filter(id__in=allowed_category_ids)
     category_modes = {}

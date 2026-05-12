@@ -11,9 +11,10 @@ fi
 
 gunicorn scoring_system.wsgi:application \
     --bind 127.0.0.1:8000 \
+    --worker-class gthread \
     --workers "${GUNICORN_WORKERS:-2}" \
-    --threads "${GUNICORN_THREADS:-2}" \
-    --timeout "${GUNICORN_TIMEOUT:-60}" &
+    --threads "${GUNICORN_THREADS:-8}" \
+    --timeout "${GUNICORN_TIMEOUT:-120}" &
 gunicorn_pid="$!"
 
 nginx -g 'daemon off;' &

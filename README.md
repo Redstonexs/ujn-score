@@ -157,6 +157,11 @@ docker run -d --name ujn-score \
   -e MYSQL_DATABASE=ujn \
   -e MYSQL_USER=ujn \
   -e MYSQL_PASSWORD=your-db-password \
+  -e MYSQL_CONNECT_TIMEOUT=5 \
+  -e MYSQL_READ_TIMEOUT=10 \
+  -e MYSQL_WRITE_TIMEOUT=10 \
+  -e GUNICORN_WORKERS=2 \
+  -e GUNICORN_THREADS=8 \
   -e CLEAR_PASSWORD=jndx \
   -v ujn-score-media:/app/ujn/media \
   yourname/ujn-score:latest
@@ -186,6 +191,11 @@ services:
       MYSQL_DATABASE: ujn
       MYSQL_USER: ujn
       MYSQL_PASSWORD: your-db-password
+      MYSQL_CONNECT_TIMEOUT: "5"
+      MYSQL_READ_TIMEOUT: "10"
+      MYSQL_WRITE_TIMEOUT: "10"
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "8"
       CLEAR_PASSWORD: jndx
     volumes:
       - ujn-score-media:/app/ujn/media
