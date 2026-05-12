@@ -291,3 +291,23 @@ services:
   - `{token}` - 评委令牌
 - **Excel 导入**：如果你修改了 Excel 字段名，建议先重新下载模板，再把数据填进去导入
 - **数据备份**：生产环境建议定期备份 MySQL 数据库 和 `ujn/media/` 目录
+
+### DockerHub 镜像自动发布
+
+仓库新增 `.github/workflows/dockerhub.yml`，推送 `main`、推送版本标签或手动触发时会构建 Docker 镜像并推送到 DockerHub。
+
+需要在 GitHub 仓库配置：
+
+- Secret `DOCKERHUB_USERNAME`：DockerHub 用户名
+- Secret `DOCKERHUB_TOKEN`：DockerHub Access Token
+- 可选 Variable `DOCKERHUB_IMAGE`：完整镜像名，例如 `yourname/ujn-score`；未设置时默认使用 `<DOCKERHUB_USERNAME>/ujn-score`
+
+镜像内置前端静态文件、Nginx 反向代理和 Django/Gunicorn 后端，容器监听 `8080`。运行示例：
+
+```bash
+docker run -p 8080:8080 \
+  -e DJANGO_SECRET_KEY=change-me \
+  -e DJANGO_DEBUG=False \
+  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+  yourname/ujn-score:latest
+```

@@ -30,4 +30,5 @@
 
 ## Release/CI
 - `.github/workflows/build-and-release.yml` runs on pushes to `main` and manual dispatch; it auto-increments a numeric tag, builds only the frontend with Node 20, then packages `frontend/dist` plus `ujn/`.
+- `.github/workflows/dockerhub.yml` builds the root `Dockerfile` and pushes to DockerHub; it expects `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets, with optional `DOCKERHUB_IMAGE` repo variable.
 - CI does not run Django tests, so run `python manage.py test scoring` locally for backend changes.
