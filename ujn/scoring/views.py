@@ -97,6 +97,14 @@ def to_int(value, default=0):
         return default
 
 
+def to_non_negative_int(value, default=0):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default
+
+
 def normalize_text(value):
     return str(value).strip() if value is not None else ''
 
@@ -142,7 +150,9 @@ def get_category_score_params(category):
             config.score_max,
             config.score_value_type,
             config.allow_duplicate_scores,
-            config.exclude_extreme_scores
+            config.exclude_extreme_scores,
+            config.exclude_lowest_count,
+            config.exclude_highest_count,
         )
     elif category.scoring_mode == 'score':
         return (
@@ -150,14 +160,18 @@ def get_category_score_params(category):
             category.score_max or config.score_max,
             category.score_value_type or config.score_value_type,
             category.allow_duplicate_scores if category.allow_duplicate_scores is not None else config.allow_duplicate_scores,
-            category.exclude_extreme_scores if category.exclude_extreme_scores is not None else config.exclude_extreme_scores
+            category.exclude_extreme_scores if category.exclude_extreme_scores is not None else config.exclude_extreme_scores,
+            category.exclude_lowest_count if category.exclude_lowest_count is not None else config.exclude_lowest_count,
+            category.exclude_highest_count if category.exclude_highest_count is not None else config.exclude_highest_count,
         )
     return (
         config.score_min,
         config.score_max,
         config.score_value_type,
         config.allow_duplicate_scores,
-        config.exclude_extreme_scores
+        config.exclude_extreme_scores,
+        config.exclude_lowest_count,
+        config.exclude_highest_count,
     )
 
 
@@ -194,6 +208,24 @@ def judge_display_name(judge_or_id):
     return f'评委{judge_id}'
 
 
+def format_extreme_rule_text(exclude_extreme_scores, exclude_lowest_count=1, exclude_highest_count=1):
+    if not exclude_extreme_scores:
+        return '统计时保留全部分数'
+
+    lowest_count = max(0, to_int(exclude_lowest_count, 1))
+    highest_count = max(0, to_int(exclude_highest_count, 1))
+    total_drop_count = lowest_count + highest_count
+    if total_drop_count <= 0:
+        return '统计时保留全部分数'
+
+    parts = []
+    if lowest_count:
+        parts.append(f'{lowest_count} 个最低分')
+    if highest_count:
+        parts.append(f'{highest_count} 个最高分')
+    return f'统计时去掉{"、".join(parts)}（评分数需大于 {total_drop_count} 时生效）'
+
+
 def format_score_rule_text(config):
     if config.score_value_type == 'integer':
         value_type_text = '整数'
@@ -202,7 +234,11 @@ def format_score_rule_text(config):
     else:
         value_type_text = '整数或小数（最多两位）'
     duplicate_text = '允许重复打分' if config.allow_duplicate_scores else '不允许重复打分'
-    extreme_text = '统计时去掉最高分和最低分' if config.exclude_extreme_scores else '统计时保留全部分数'
+    extreme_text = format_extreme_rule_text(
+        config.exclude_extreme_scores,
+        config.exclude_lowest_count,
+        config.exclude_highest_count,
+    )
     return f'合法打分：{value_type_text}；{duplicate_text}；打分范围：{format_score_value(config.score_min)}-{format_score_value(config.score_max)}；{extreme_text}'
 
 
@@ -214,7 +250,15 @@ def format_category_rule_text(category, config):
         return f'投票模式：从 {vote_total_count} 人中选择 {vote_select_count} 人'
     else:
         # 分数模式，获取类别的实际参数
-        score_min, score_max, score_value_type, allow_duplicate_scores, exclude_extreme_scores = get_category_score_params(category)
+        (
+            score_min,
+            score_max,
+            score_value_type,
+            allow_duplicate_scores,
+            exclude_extreme_scores,
+            exclude_lowest_count,
+            exclude_highest_count,
+        ) = get_category_score_params(category)
         if score_value_type == 'integer':
             value_type_text = '整数'
         elif score_value_type == 'decimal':
@@ -222,7 +266,11 @@ def format_category_rule_text(category, config):
         else:
             value_type_text = '整数或小数（最多两位）'
         duplicate_text = '允许重复打分' if allow_duplicate_scores else '不允许重复打分'
-        extreme_text = '统计时去掉最高分和最低分' if exclude_extreme_scores else '统计时保留全部分数'
+        extreme_text = format_extreme_rule_text(
+            exclude_extreme_scores,
+            exclude_lowest_count,
+            exclude_highest_count,
+        )
         return f'合法打分：{value_type_text}；{duplicate_text}；打分范围：{format_score_value(score_min)}-{format_score_value(score_max)}；{extreme_text}'
 
 
@@ -236,6 +284,8 @@ def serialize_site_config(config, include_private=False):
         'allow_duplicate_scores': config.allow_duplicate_scores,
         'allow_scoring': config.allow_scoring,
         'exclude_extreme_scores': config.exclude_extreme_scores,
+        'exclude_lowest_count': config.exclude_lowest_count,
+        'exclude_highest_count': config.exclude_highest_count,
         'background_image': config.background_image.url if config.background_image else None,
         'logo_image': config.logo_image.url if config.logo_image else None,
         'scoring_mode': config.scoring_mode,
@@ -292,19 +342,40 @@ def build_judge_qrcode_filename(pattern, judge, index, site_name):
     return sanitize_filename_component(filename)
 
 
-def apply_score_rule(raw_scores, exclude_extreme_scores=False):
+def apply_score_rule(
+    raw_scores,
+    exclude_extreme_scores=False,
+    exclude_lowest_count=1,
+    exclude_highest_count=1,
+):
     scores = list(raw_scores)
-    if exclude_extreme_scores and len(scores) >= 3:
+    lowest_count = max(0, to_int(exclude_lowest_count, 1))
+    highest_count = max(0, to_int(exclude_highest_count, 1))
+    total_drop_count = lowest_count + highest_count
+    if exclude_extreme_scores and total_drop_count > 0 and len(scores) > total_drop_count:
         ordered = sorted(scores)
-        return ordered[1:-1], ordered[0], ordered[-1]
-    return scores, None, None
+        high_start = len(ordered) - highest_count if highest_count else len(ordered)
+        return ordered[lowest_count:high_start], ordered[:lowest_count], ordered[high_start:]
+    return scores, [], []
 
 
-def calculate_participant_statistics(participant, scores, exclude_extreme_scores=False):
+def calculate_participant_statistics(
+    participant,
+    scores,
+    exclude_extreme_scores=False,
+    exclude_lowest_count=1,
+    exclude_highest_count=1,
+):
     if not scores:
         return None
 
-    effective_scores, dropped_low, dropped_high = apply_score_rule(scores, exclude_extreme_scores)
+    effective_scores, dropped_lows, dropped_highs = apply_score_rule(
+        scores,
+        exclude_extreme_scores,
+        exclude_lowest_count,
+        exclude_highest_count,
+    )
+    rule_applied = len(dropped_lows) > 0 or len(dropped_highs) > 0
     raw_total = quantize_score(sum(scores, Decimal('0')))
     raw_average = quantize_score(raw_total / Decimal(len(scores))) if scores else Decimal('0')
     total = quantize_score(sum(effective_scores, Decimal('0')))
@@ -321,9 +392,13 @@ def calculate_participant_statistics(participant, scores, exclude_extreme_scores
         'effective_count': len(effective_scores),
         'raw_total': format_score_value(raw_total),
         'raw_average': format_score_value(raw_average),
-        'dropped_low': format_score_value(dropped_low),
-        'dropped_high': format_score_value(dropped_high),
-        'rule_applied': exclude_extreme_scores and len(scores) >= 3,
+        'dropped_low': format_score_value(dropped_lows[0]) if dropped_lows else None,
+        'dropped_high': format_score_value(dropped_highs[-1]) if dropped_highs else None,
+        'dropped_lows': [format_score_value(item) for item in dropped_lows],
+        'dropped_highs': [format_score_value(item) for item in dropped_highs],
+        'dropped_low_count': len(dropped_lows),
+        'dropped_high_count': len(dropped_highs),
+        'rule_applied': rule_applied,
     }
 
 
@@ -395,6 +470,14 @@ def update_admin_config(request):
     config.allow_duplicate_scores = parse_bool(payload.get('allow_duplicate_scores'), config.allow_duplicate_scores)
     config.allow_scoring = parse_bool(payload.get('allow_scoring'), config.allow_scoring)
     config.exclude_extreme_scores = parse_bool(payload.get('exclude_extreme_scores'), config.exclude_extreme_scores)
+    config.exclude_lowest_count = to_non_negative_int(
+        payload.get('exclude_lowest_count'),
+        config.exclude_lowest_count,
+    )
+    config.exclude_highest_count = to_non_negative_int(
+        payload.get('exclude_highest_count'),
+        config.exclude_highest_count,
+    )
     
     scoring_mode = normalize_text(payload.get('scoring_mode'))
     if scoring_mode in ['score', 'vote']:
@@ -435,6 +518,61 @@ def update_admin_config(request):
 
 # ==================== 评委认证 ====================
 
+def build_judge_submission_state(judge):
+    """构建评委已提交记录的服务端快照。"""
+    submitted_score_category_ids = set()
+    submitted_scores = defaultdict(dict)
+    judge_scores = (
+        Score.objects.filter(judge=judge)
+        .select_related('participant')
+        .order_by(
+            'participant__category__order',
+            'participant__order',
+            'participant_id',
+        )
+    )
+    for score in judge_scores:
+        category_id = score.participant.category_id
+        submitted_score_category_ids.add(category_id)
+        submitted_scores[category_id][score.participant_id] = format_score_value(score.score)
+
+    submitted_vote_category_ids = set()
+    submitted_votes = defaultdict(list)
+    judge_votes = (
+        Vote.objects.filter(judge=judge)
+        .select_related('participant', 'category')
+        .order_by(
+            'category__order',
+            'category_id',
+            'vote_order',
+            'participant__order',
+            'participant_id',
+        )
+    )
+    for vote in judge_votes:
+        submitted_vote_category_ids.add(vote.category_id)
+        submitted_votes[vote.category_id].append({
+            'participant_id': vote.participant_id,
+            'vote_order': vote.vote_order,
+        })
+
+    submitted_category_ids = sorted(
+        submitted_score_category_ids | submitted_vote_category_ids
+    )
+
+    return {
+        'submitted_categories': submitted_category_ids,
+        'submitted_scores': {
+            category_id: dict(category_scores)
+            for category_id, category_scores in submitted_scores.items()
+        },
+        'submitted_votes': {
+            category_id: list(category_votes)
+            for category_id, category_votes in submitted_votes.items()
+        },
+    }
+
+
 @require_GET
 def judge_auth(request, token):
     """通过token验证评委身份"""
@@ -443,25 +581,7 @@ def judge_auth(request, token):
     except Judge.DoesNotExist:
         return error_response('无效的评委链接', 404)
 
-    # 获取分数模式的提交记录
-    judge_scores = Score.objects.filter(judge=judge).select_related('participant')
-    submitted_score_category_ids = judge_scores.values_list('participant__category_id', flat=True).distinct()
-    submitted_scores = defaultdict(dict)
-    for score in judge_scores:
-        submitted_scores[score.participant.category_id][score.participant_id] = format_score_value(score.score)
-    
-    # 获取投票模式的提交记录
-    judge_votes = Vote.objects.filter(judge=judge).select_related('participant')
-    submitted_vote_category_ids = judge_votes.values_list('category_id', flat=True).distinct()
-    submitted_votes = defaultdict(list)
-    for vote in judge_votes:
-        submitted_votes[vote.category.id].append({
-            'participant_id': vote.participant.id,
-            'vote_order': vote.vote_order,
-        })
-    
-    # 合并已提交的类别ID
-    submitted_category_ids = list(set(list(submitted_score_category_ids) + list(submitted_vote_category_ids)))
+    submission_state = build_judge_submission_state(judge)
     
     # 获取所有类别的打分模式信息
     categories = Category.objects.all()
@@ -469,7 +589,15 @@ def judge_auth(request, token):
     for cat in categories:
         mode = get_category_scoring_mode(cat)
         total, select = get_category_vote_params(cat)
-        score_min, score_max, score_value_type, allow_duplicate, exclude_extreme = get_category_score_params(cat)
+        (
+            score_min,
+            score_max,
+            score_value_type,
+            allow_duplicate,
+            exclude_extreme,
+            exclude_lowest_count,
+            exclude_highest_count,
+        ) = get_category_score_params(cat)
         category_modes[cat.id] = {
             'mode': mode,
             'vote_total_count': total,
@@ -479,14 +607,14 @@ def judge_auth(request, token):
             'score_value_type': score_value_type,
             'allow_duplicate_scores': allow_duplicate,
             'exclude_extreme_scores': exclude_extreme,
+            'exclude_lowest_count': exclude_lowest_count,
+            'exclude_highest_count': exclude_highest_count,
         }
 
     return json_response({
         'judge_id': judge.id,
         'judge_name': judge_display_name(judge),
-        'submitted_categories': submitted_category_ids,
-        'submitted_scores': submitted_scores,
-        'submitted_votes': submitted_votes,
+        **submission_state,
         'category_modes': category_modes,
     })
 
@@ -513,6 +641,8 @@ def get_categories(request):
             'score_value_type': cat.score_value_type,
             'allow_duplicate_scores': cat.allow_duplicate_scores,
             'exclude_extreme_scores': cat.exclude_extreme_scores,
+            'exclude_lowest_count': cat.exclude_lowest_count,
+            'exclude_highest_count': cat.exclude_highest_count,
         })
     return json_response({'categories': result})
 
@@ -581,7 +711,7 @@ def submit_scores(request):
     )
 
     # 获取类别级别的分数参数
-    score_min, score_max, score_value_type, allow_duplicate_scores, _ = get_category_score_params(category)
+    score_min, score_max, score_value_type, allow_duplicate_scores, _, _, _ = get_category_score_params(category)
 
     score_objects = []
     normalized_score_values = []
@@ -626,7 +756,11 @@ def submit_scores(request):
 
     Score.objects.bulk_create(score_objects)
     score_event_bus.notify()
-    return json_response({'success': True, 'message': f'成功提交【{category.name}】的评分'})
+    return json_response({
+        'success': True,
+        'message': f'成功提交【{category.name}】的评分',
+        **build_judge_submission_state(judge),
+    })
 
 
 @csrf_exempt
@@ -709,7 +843,11 @@ def submit_votes(request):
 
     Vote.objects.bulk_create(vote_objects)
     score_event_bus.notify()
-    return json_response({'success': True, 'message': f'成功提交【{category.name}】的投票'})
+    return json_response({
+        'success': True,
+        'message': f'成功提交【{category.name}】的投票',
+        **build_judge_submission_state(judge),
+    })
 
 
 # ==================== 管理员功能 ====================
@@ -805,12 +943,22 @@ def export_excel(request):
 
                 ranking_stats = []
                 # 获取类别的统计规则设置
-                _, _, _, _, category_exclude_extreme = get_category_score_params(category)
+                (
+                    _,
+                    _,
+                    _,
+                    _,
+                    category_exclude_extreme,
+                    exclude_lowest_count,
+                    exclude_highest_count,
+                ) = get_category_score_params(category)
                 for participant in participants:
                     stat = calculate_participant_statistics(
                         participant,
                         scores_by_participant.get(participant.id, []),
                         category_exclude_extreme,
+                        exclude_lowest_count,
+                        exclude_highest_count,
                     )
                     if stat:
                         ranking_stats.append(stat)
@@ -1766,6 +1914,8 @@ def create_category(request):
     score_value_type = normalize_text(data.get('score_value_type')) if 'score_value_type' in data else None
     allow_duplicate_scores = parse_bool(data.get('allow_duplicate_scores')) if 'allow_duplicate_scores' in data else None
     exclude_extreme_scores = parse_bool(data.get('exclude_extreme_scores')) if 'exclude_extreme_scores' in data else None
+    exclude_lowest_count = to_non_negative_int(data.get('exclude_lowest_count'), None) if 'exclude_lowest_count' in data else None
+    exclude_highest_count = to_non_negative_int(data.get('exclude_highest_count'), None) if 'exclude_highest_count' in data else None
 
     category = Category.objects.create(
         name=name,
@@ -1779,6 +1929,8 @@ def create_category(request):
         score_value_type=score_value_type,
         allow_duplicate_scores=allow_duplicate_scores,
         exclude_extreme_scores=exclude_extreme_scores,
+        exclude_lowest_count=exclude_lowest_count,
+        exclude_highest_count=exclude_highest_count,
     )
 
     return json_response({
@@ -1798,6 +1950,8 @@ def create_category(request):
             'score_value_type': category.score_value_type,
             'allow_duplicate_scores': category.allow_duplicate_scores,
             'exclude_extreme_scores': category.exclude_extreme_scores,
+            'exclude_lowest_count': category.exclude_lowest_count,
+            'exclude_highest_count': category.exclude_highest_count,
         }
     })
 
@@ -1863,6 +2017,14 @@ def update_category(request, category_id):
     if 'exclude_extreme_scores' in data:
         category.exclude_extreme_scores = parse_bool(data.get('exclude_extreme_scores')) if 'exclude_extreme_scores' in data else None
 
+    if 'exclude_lowest_count' in data:
+        val = data.get('exclude_lowest_count')
+        category.exclude_lowest_count = to_non_negative_int(val, None) if val is not None else None
+
+    if 'exclude_highest_count' in data:
+        val = data.get('exclude_highest_count')
+        category.exclude_highest_count = to_non_negative_int(val, None) if val is not None else None
+
     category.save()
 
     return json_response({
@@ -1882,6 +2044,8 @@ def update_category(request, category_id):
             'score_value_type': category.score_value_type,
             'allow_duplicate_scores': category.allow_duplicate_scores,
             'exclude_extreme_scores': category.exclude_extreme_scores,
+            'exclude_lowest_count': category.exclude_lowest_count,
+            'exclude_highest_count': category.exclude_highest_count,
         }
     })
 

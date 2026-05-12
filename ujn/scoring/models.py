@@ -37,7 +37,15 @@ class SiteConfig(models.Model):
     exclude_extreme_scores = models.BooleanField(
         default=False,
         verbose_name="统计时去掉最高分和最低分",
-        help_text="开启后，统计总分与平均分时会在有效评分数大于等于3时去掉一条最高分和一条最低分。",
+        help_text="开启后，统计总分与平均分时按配置数量去掉最低分和最高分。",
+    )
+    exclude_lowest_count = models.PositiveIntegerField(
+        default=1,
+        verbose_name="去掉最低分数量",
+    )
+    exclude_highest_count = models.PositiveIntegerField(
+        default=1,
+        verbose_name="去掉最高分数量",
     )
     base_url = models.CharField(
         max_length=500,
@@ -190,6 +198,16 @@ class Category(models.Model):
         null=True,
         blank=True,
         verbose_name="统计时去掉最高分和最低分",
+    )
+    exclude_lowest_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="去掉最低分数量",
+    )
+    exclude_highest_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="去掉最高分数量",
     )
 
     class Meta:

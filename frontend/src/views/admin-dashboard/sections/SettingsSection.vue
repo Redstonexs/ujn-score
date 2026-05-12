@@ -37,6 +37,8 @@ const quickSettingScoreMin = ref<number>(1);
 const quickSettingScoreMax = ref<number>(100);
 const quickSettingAllowDuplicateScores = ref<boolean>(true);
 const quickSettingExcludeExtremeScores = ref<boolean>(false);
+const quickSettingExcludeLowestCount = ref<number>(1);
+const quickSettingExcludeHighestCount = ref<number>(1);
 const quickSettingVoteSelectCount = ref<number>(3);
 
 // 本地状态存储每个类别的打分模式设置
@@ -52,6 +54,8 @@ const categoryModeSettings = reactive<
       score_max: number | null;
       allow_duplicate_scores: boolean | null;
       exclude_extreme_scores: boolean | null;
+      exclude_lowest_count: number | null;
+      exclude_highest_count: number | null;
     }
   >
 >({});
@@ -69,6 +73,10 @@ const localAllowDuplicateScores = ref<boolean>(
 const localExcludeExtremeScores = ref<boolean>(
   configForm.exclude_extreme_scores,
 );
+const localExcludeLowestCount = ref<number>(configForm.exclude_lowest_count ?? 1);
+const localExcludeHighestCount = ref<number>(
+  configForm.exclude_highest_count ?? 1,
+);
 const localVoteSelectCount = ref<number>(configForm.vote_select_count);
 
 // 从 configForm 同步本地状态
@@ -79,6 +87,8 @@ function syncLocalFromConfig() {
   localScoreMax.value = configForm.score_max;
   localAllowDuplicateScores.value = configForm.allow_duplicate_scores;
   localExcludeExtremeScores.value = configForm.exclude_extreme_scores;
+  localExcludeLowestCount.value = configForm.exclude_lowest_count ?? 1;
+  localExcludeHighestCount.value = configForm.exclude_highest_count ?? 1;
   localVoteSelectCount.value = configForm.vote_select_count;
 }
 
@@ -90,6 +100,8 @@ function syncConfigFromLocal() {
   configForm.score_max = localScoreMax.value;
   configForm.allow_duplicate_scores = localAllowDuplicateScores.value;
   configForm.exclude_extreme_scores = localExcludeExtremeScores.value;
+  configForm.exclude_lowest_count = localExcludeLowestCount.value;
+  configForm.exclude_highest_count = localExcludeHighestCount.value;
   configForm.vote_select_count = localVoteSelectCount.value;
 }
 
@@ -141,7 +153,12 @@ function getScoreRuleDescription(settings: any) {
       : settings.score_value_type === "integer_decimal"
         ? "整数和小数"
         : "仅整数";
-  return `分数模式 | ${typeText} | ${settings.score_min}-${settings.score_max}分 | ${settings.allow_duplicate_scores ? "允许重复" : "不重复"} | ${settings.exclude_extreme_scores ? "去极值" : "保留全部分数"}`;
+  return `分数模式 | ${typeText} | ${settings.score_min}-${settings.score_max}分 | ${settings.allow_duplicate_scores ? "允许重复" : "不重复"} | ${getExtremeRuleLabel(settings)}`;
+}
+
+function getExtremeRuleLabel(settings: any) {
+  if (!settings.exclude_extreme_scores) return "保留全部分数";
+  return `去最低${settings.exclude_lowest_count ?? 1}个/最高${settings.exclude_highest_count ?? 1}个`;
 }
 
 // 获取投票模式的规则描述
@@ -160,7 +177,7 @@ const groupedCategories = computed(() => {
     const ruleKey =
       settings.scoring_mode === "vote"
         ? `vote_${settings.vote_select_count}`
-        : `score_${settings.score_value_type}_${settings.score_min}_${settings.score_max}_${settings.allow_duplicate_scores}_${settings.exclude_extreme_scores}`;
+        : `score_${settings.score_value_type}_${settings.score_min}_${settings.score_max}_${settings.allow_duplicate_scores}_${settings.exclude_extreme_scores}_${settings.exclude_lowest_count}_${settings.exclude_highest_count}`;
 
     if (!groups[ruleKey]) {
       groups[ruleKey] = [];
@@ -185,6 +202,8 @@ watch(
     score_max: configForm.score_max,
     allow_duplicate_scores: configForm.allow_duplicate_scores,
     exclude_extreme_scores: configForm.exclude_extreme_scores,
+    exclude_lowest_count: configForm.exclude_lowest_count,
+    exclude_highest_count: configForm.exclude_highest_count,
     vote_select_count: configForm.vote_select_count,
   }),
   () => {
@@ -220,6 +239,10 @@ function initCategoryModeSettings() {
           category.allow_duplicate_scores ?? localAllowDuplicateScores.value,
         exclude_extreme_scores:
           category.exclude_extreme_scores ?? localExcludeExtremeScores.value,
+        exclude_lowest_count:
+          category.exclude_lowest_count ?? localExcludeLowestCount.value,
+        exclude_highest_count:
+          category.exclude_highest_count ?? localExcludeHighestCount.value,
       };
     }
   });
@@ -250,6 +273,8 @@ async function saveCategorySettings(categoryId: number) {
       body.score_max = null;
       body.allow_duplicate_scores = null;
       body.exclude_extreme_scores = null;
+      body.exclude_lowest_count = null;
+      body.exclude_highest_count = null;
     } else if (settings.scoring_mode === "score") {
       body.vote_select_count = null;
       // 分数模式设置
@@ -258,6 +283,8 @@ async function saveCategorySettings(categoryId: number) {
       body.score_max = settings.score_max;
       body.allow_duplicate_scores = settings.allow_duplicate_scores;
       body.exclude_extreme_scores = settings.exclude_extreme_scores;
+      body.exclude_lowest_count = settings.exclude_lowest_count;
+      body.exclude_highest_count = settings.exclude_highest_count;
     }
 
     const res = await fetch(
@@ -308,6 +335,8 @@ function getDefaultScoreSettings() {
     score_max: localScoreMax.value ?? 100,
     allow_duplicate_scores: localAllowDuplicateScores.value ?? true,
     exclude_extreme_scores: localExcludeExtremeScores.value ?? false,
+    exclude_lowest_count: localExcludeLowestCount.value ?? 1,
+    exclude_highest_count: localExcludeHighestCount.value ?? 1,
   };
 }
 
@@ -320,6 +349,8 @@ function openQuickSettingModal() {
   quickSettingScoreMax.value = localScoreMax.value;
   quickSettingAllowDuplicateScores.value = localAllowDuplicateScores.value;
   quickSettingExcludeExtremeScores.value = localExcludeExtremeScores.value;
+  quickSettingExcludeLowestCount.value = localExcludeLowestCount.value;
+  quickSettingExcludeHighestCount.value = localExcludeHighestCount.value;
   quickSettingVoteSelectCount.value = localVoteSelectCount.value;
   quickSettingModalVisible.value = true;
 }
@@ -343,6 +374,8 @@ function applyQuickSettingAndSync() {
   localScoreMax.value = quickSettingScoreMax.value;
   localAllowDuplicateScores.value = quickSettingAllowDuplicateScores.value;
   localExcludeExtremeScores.value = quickSettingExcludeExtremeScores.value;
+  localExcludeLowestCount.value = quickSettingExcludeLowestCount.value;
+  localExcludeHighestCount.value = quickSettingExcludeHighestCount.value;
   localVoteSelectCount.value = quickSettingVoteSelectCount.value;
 
   // 同步到所有类别
@@ -363,6 +396,8 @@ function applyQuickSettingAndSync() {
         settings.score_max = null;
         settings.allow_duplicate_scores = null;
         settings.exclude_extreme_scores = null;
+        settings.exclude_lowest_count = null;
+        settings.exclude_highest_count = null;
       } else {
         settings.vote_select_count = null;
         settings.score_value_type = quickSettingScoreValueType.value;
@@ -372,6 +407,8 @@ function applyQuickSettingAndSync() {
           quickSettingAllowDuplicateScores.value;
         settings.exclude_extreme_scores =
           quickSettingExcludeExtremeScores.value;
+        settings.exclude_lowest_count = quickSettingExcludeLowestCount.value;
+        settings.exclude_highest_count = quickSettingExcludeHighestCount.value;
       }
     }
   }
@@ -399,6 +436,12 @@ function initScoreSettings(categoryId: number) {
   }
   if (settings.exclude_extreme_scores === null) {
     settings.exclude_extreme_scores = defaults.exclude_extreme_scores;
+  }
+  if (settings.exclude_lowest_count === null) {
+    settings.exclude_lowest_count = defaults.exclude_lowest_count;
+  }
+  if (settings.exclude_highest_count === null) {
+    settings.exclude_highest_count = defaults.exclude_highest_count;
   }
 }
 
@@ -743,6 +786,35 @@ function hasAnyCategoryScores(): boolean {
                 </div>
                 <span class="switch-label">去掉最高分和最低分</span>
               </label>
+              <div
+                v-if="categoryModeSettings[category.id].exclude_extreme_scores"
+                class="form-grid extreme-count-grid"
+              >
+                <label class="form-field">
+                  <span>去掉最低分数量</span>
+                  <input
+                    v-model.number="
+                      categoryModeSettings[category.id].exclude_lowest_count
+                    "
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>去掉最高分数量</span>
+                  <input
+                    v-model.number="
+                      categoryModeSettings[category.id].exclude_highest_count
+                    "
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                  />
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -949,11 +1021,7 @@ function hasAnyCategoryScores(): boolean {
                         : "不可重复"
                     }}
                     |
-                    {{
-                      group[0].settings.exclude_extreme_scores
-                        ? "去极值"
-                        : "全保留"
-                    }}
+                    {{ getExtremeRuleLabel(group[0].settings) }}
                   </template>
                   <template v-else>
                     选{{ group[0].settings.vote_select_count }}人
@@ -1134,6 +1202,32 @@ function hasAnyCategoryScores(): boolean {
                 <span class="slider"></span>
               </div>
               <span class="switch-label">统计时去掉最高分和最低分</span>
+            </label>
+          </div>
+          <div
+            v-if="quickSettingExcludeExtremeScores"
+            class="form-grid extreme-count-grid"
+            style="margin-top: 16px"
+          >
+            <label class="form-field">
+              <span>去掉最低分数量</span>
+              <input
+                v-model.number="quickSettingExcludeLowestCount"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+            </label>
+            <label class="form-field">
+              <span>去掉最高分数量</span>
+              <input
+                v-model.number="quickSettingExcludeHighestCount"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
             </label>
           </div>
         </div>
@@ -1336,6 +1430,10 @@ function hasAnyCategoryScores(): boolean {
   font-size: 13px;
   color: #666;
   white-space: nowrap;
+}
+
+.extreme-count-grid {
+  flex: 0 0 100%;
 }
 
 /* 兼容旧样式 */

@@ -61,6 +61,8 @@ const scoreParams = computed(() => {
       scoreValueType: "integer" as const,
       allowDuplicateScores: true,
       excludeExtremeScores: false,
+      excludeLowestCount: 1,
+      excludeHighestCount: 1,
     };
 
   let scoreMin: number;
@@ -68,6 +70,8 @@ const scoreParams = computed(() => {
   let scoreValueType: "integer" | "decimal" | "integer_decimal";
   let allowDuplicateScores: boolean;
   let excludeExtremeScores: boolean;
+  let excludeLowestCount: number;
+  let excludeHighestCount: number;
 
   if (
     currentCategory.value.scoring_mode === "default" ||
@@ -78,6 +82,8 @@ const scoreParams = computed(() => {
     scoreValueType = siteConfig.value.score_value_type;
     allowDuplicateScores = siteConfig.value.allow_duplicate_scores;
     excludeExtremeScores = siteConfig.value.exclude_extreme_scores;
+    excludeLowestCount = siteConfig.value.exclude_lowest_count;
+    excludeHighestCount = siteConfig.value.exclude_highest_count;
   } else {
     // score
     scoreMin = currentCategory.value.score_min ?? siteConfig.value.score_min;
@@ -91,6 +97,12 @@ const scoreParams = computed(() => {
     excludeExtremeScores =
       currentCategory.value.exclude_extreme_scores ??
       siteConfig.value.exclude_extreme_scores;
+    excludeLowestCount =
+      currentCategory.value.exclude_lowest_count ??
+      siteConfig.value.exclude_lowest_count;
+    excludeHighestCount =
+      currentCategory.value.exclude_highest_count ??
+      siteConfig.value.exclude_highest_count;
   }
 
   return {
@@ -99,6 +111,8 @@ const scoreParams = computed(() => {
     scoreValueType,
     allowDuplicateScores,
     excludeExtremeScores,
+    excludeLowestCount,
+    excludeHighestCount,
   };
 });
 
@@ -117,7 +131,10 @@ const scoreRuleHint = computed(() => {
   const duplicateText = params.allowDuplicateScores
     ? "允许重复分数"
     : "不允许重复分数";
-  return `请按规则打分：${typeText}，${duplicateText}，范围 ${params.scoreMin}-${params.scoreMax}`;
+  const extremeText = params.excludeExtremeScores
+    ? `，统计时去掉最低 ${params.excludeLowestCount} 个、最高 ${params.excludeHighestCount} 个`
+    : "";
+  return `请按规则打分：${typeText}，${duplicateText}，范围 ${params.scoreMin}-${params.scoreMax}${extremeText}`;
 });
 
 const voteRuleHint = computed(() => {
@@ -134,6 +151,14 @@ const currentVotes = computed(() => store.getVotes(categoryIdNum.value));
 // 检查是否已投票给某个选手
 const isVoted = (participantId: number) =>
   store.isVoted(categoryIdNum.value, participantId);
+
+const isSubmittedVoted = (participantId: number) =>
+  store.isSubmittedVote(categoryIdNum.value, participantId) ||
+  isVoted(participantId);
+
+const getSubmittedScore = (participantId: number) =>
+  store.getSubmittedScore(categoryIdNum.value, participantId) ??
+  store.getScore(categoryIdNum.value, participantId);
 
 // 切换投票
 const toggleVote = async (participantId: number) => {
@@ -466,14 +491,14 @@ function goBack() {
                     v-if="currentScoringMode === 'vote'"
                     class="vote-display"
                   >
-                    <span v-if="isVoted(p.id)" class="vote-status voted"
+                    <span v-if="isSubmittedVoted(p.id)" class="vote-status voted"
                       >✓ 已选中</span
                     >
                     <span v-else class="vote-status not-voted">-</span>
                   </div>
                   <div v-else class="score-display">
                     <span class="score-value">{{
-                      store.getScore(categoryIdNum, p.id) ?? "-"
+                      getSubmittedScore(p.id) ?? "-"
                     }}</span>
                     <span class="score-unit">分</span>
                   </div>

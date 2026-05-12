@@ -83,6 +83,13 @@ def _quantize_score(value):
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _to_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _format_score_value(value):
     if value is None:
         return None
@@ -117,6 +124,7 @@ def _get_category_score_params(category):
         return (
             config.score_min, config.score_max, config.score_value_type,
             config.allow_duplicate_scores, config.exclude_extreme_scores,
+            config.exclude_lowest_count, config.exclude_highest_count,
         )
     elif category.scoring_mode == 'score':
         return (
@@ -125,11 +133,32 @@ def _get_category_score_params(category):
             category.score_value_type or config.score_value_type,
             category.allow_duplicate_scores if category.allow_duplicate_scores is not None else config.allow_duplicate_scores,
             category.exclude_extreme_scores if category.exclude_extreme_scores is not None else config.exclude_extreme_scores,
+            category.exclude_lowest_count if category.exclude_lowest_count is not None else config.exclude_lowest_count,
+            category.exclude_highest_count if category.exclude_highest_count is not None else config.exclude_highest_count,
         )
     return (
         config.score_min, config.score_max, config.score_value_type,
         config.allow_duplicate_scores, config.exclude_extreme_scores,
+        config.exclude_lowest_count, config.exclude_highest_count,
     )
+
+
+def _format_extreme_rule_text(exclude_extreme_scores, exclude_lowest_count=1, exclude_highest_count=1):
+    if not exclude_extreme_scores:
+        return '统计时保留全部分数'
+
+    lowest_count = max(0, _to_int(exclude_lowest_count, 1))
+    highest_count = max(0, _to_int(exclude_highest_count, 1))
+    total_drop_count = lowest_count + highest_count
+    if total_drop_count <= 0:
+        return '统计时保留全部分数'
+
+    parts = []
+    if lowest_count:
+        parts.append(f'{lowest_count} 个最低分')
+    if highest_count:
+        parts.append(f'{highest_count} 个最高分')
+    return f'统计时去掉{"、".join(parts)}（评分数需大于 {total_drop_count} 时生效）'
 
 
 def _format_score_rule_text(config):
@@ -140,7 +169,11 @@ def _format_score_rule_text(config):
     else:
         value_type_text = '整数或小数（最多两位）'
     duplicate_text = '允许重复打分' if config.allow_duplicate_scores else '不允许重复打分'
-    extreme_text = '统计时去掉最高分和最低分' if config.exclude_extreme_scores else '统计时保留全部分数'
+    extreme_text = _format_extreme_rule_text(
+        config.exclude_extreme_scores,
+        config.exclude_lowest_count,
+        config.exclude_highest_count,
+    )
     return f'合法打分：{value_type_text}；{duplicate_text}；打分范围：{_format_score_value(config.score_min)}-{_format_score_value(config.score_max)}；{extreme_text}'
 
 
@@ -150,7 +183,15 @@ def _format_category_rule_text(category, config):
         vote_total_count, vote_select_count = _get_category_vote_params(category)
         return f'投票模式：从 {vote_total_count} 人中选择 {vote_select_count} 人'
     else:
-        score_min, score_max, score_value_type, allow_duplicate_scores, exclude_extreme_scores = _get_category_score_params(category)
+        (
+            score_min,
+            score_max,
+            score_value_type,
+            allow_duplicate_scores,
+            exclude_extreme_scores,
+            exclude_lowest_count,
+            exclude_highest_count,
+        ) = _get_category_score_params(category)
         if score_value_type == 'integer':
             value_type_text = '整数'
         elif score_value_type == 'decimal':
@@ -158,23 +199,48 @@ def _format_category_rule_text(category, config):
         else:
             value_type_text = '整数或小数（最多两位）'
         duplicate_text = '允许重复打分' if allow_duplicate_scores else '不允许重复打分'
-        extreme_text = '统计时去掉最高分和最低分' if exclude_extreme_scores else '统计时保留全部分数'
+        extreme_text = _format_extreme_rule_text(
+            exclude_extreme_scores,
+            exclude_lowest_count,
+            exclude_highest_count,
+        )
         return f'合法打分：{value_type_text}；{duplicate_text}；打分范围：{_format_score_value(score_min)}-{_format_score_value(score_max)}；{extreme_text}'
 
 
-def _apply_score_rule(raw_scores, exclude_extreme_scores=False):
+def _apply_score_rule(
+    raw_scores,
+    exclude_extreme_scores=False,
+    exclude_lowest_count=1,
+    exclude_highest_count=1,
+):
     scores = list(raw_scores)
-    if exclude_extreme_scores and len(scores) >= 3:
+    lowest_count = max(0, _to_int(exclude_lowest_count, 1))
+    highest_count = max(0, _to_int(exclude_highest_count, 1))
+    total_drop_count = lowest_count + highest_count
+    if exclude_extreme_scores and total_drop_count > 0 and len(scores) > total_drop_count:
         ordered = sorted(scores)
-        return ordered[1:-1], ordered[0], ordered[-1]
-    return scores, None, None
+        high_start = len(ordered) - highest_count if highest_count else len(ordered)
+        return ordered[lowest_count:high_start], ordered[:lowest_count], ordered[high_start:]
+    return scores, [], []
 
 
-def _calculate_participant_statistics(participant, scores, exclude_extreme_scores=False):
+def _calculate_participant_statistics(
+    participant,
+    scores,
+    exclude_extreme_scores=False,
+    exclude_lowest_count=1,
+    exclude_highest_count=1,
+):
     if not scores:
         return None
 
-    effective_scores, dropped_low, dropped_high = _apply_score_rule(scores, exclude_extreme_scores)
+    effective_scores, dropped_lows, dropped_highs = _apply_score_rule(
+        scores,
+        exclude_extreme_scores,
+        exclude_lowest_count,
+        exclude_highest_count,
+    )
+    rule_applied = len(dropped_lows) > 0 or len(dropped_highs) > 0
     raw_total = _quantize_score(sum(scores, Decimal('0')))
     raw_average = _quantize_score(raw_total / Decimal(len(scores))) if scores else Decimal('0')
     total = _quantize_score(sum(effective_scores, Decimal('0')))
@@ -191,9 +257,13 @@ def _calculate_participant_statistics(participant, scores, exclude_extreme_score
         'effective_count': len(effective_scores),
         'raw_total': _format_score_value(raw_total),
         'raw_average': _format_score_value(raw_average),
-        'dropped_low': _format_score_value(dropped_low),
-        'dropped_high': _format_score_value(dropped_high),
-        'rule_applied': exclude_extreme_scores and len(scores) >= 3,
+        'dropped_low': _format_score_value(dropped_lows[0]) if dropped_lows else None,
+        'dropped_high': _format_score_value(dropped_highs[-1]) if dropped_highs else None,
+        'dropped_lows': [_format_score_value(item) for item in dropped_lows],
+        'dropped_highs': [_format_score_value(item) for item in dropped_highs],
+        'dropped_low_count': len(dropped_lows),
+        'dropped_high_count': len(dropped_highs),
+        'rule_applied': rule_applied,
     }
 
 
@@ -264,6 +334,8 @@ def build_scores_data():
         'votes': {},
         'statistics': {},
         'exclude_extreme_scores': config.exclude_extreme_scores,
+        'exclude_lowest_count': config.exclude_lowest_count,
+        'exclude_highest_count': config.exclude_highest_count,
         'calculation_rule': _format_score_rule_text(config),
         'category_rules': {},
     }
@@ -316,12 +388,22 @@ def build_scores_data():
             result['scores'][cat.id] = cat_scores
 
             cat_stats = []
-            _, _, _, _, category_exclude_extreme = _get_category_score_params(cat)
+            (
+                _,
+                _,
+                _,
+                _,
+                category_exclude_extreme,
+                exclude_lowest_count,
+                exclude_highest_count,
+            ) = _get_category_score_params(cat)
             for participant in participants:
                 stat = _calculate_participant_statistics(
                     participant,
                     scores_by_participant.get(participant.id, []),
                     category_exclude_extreme,
+                    exclude_lowest_count,
+                    exclude_highest_count,
                 )
                 if stat:
                     cat_stats.append(stat)

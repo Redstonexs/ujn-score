@@ -11,6 +11,8 @@ export interface SiteConfig {
   allow_duplicate_scores: boolean;
   allow_scoring: boolean;
   exclude_extreme_scores: boolean;
+  exclude_lowest_count: number;
+  exclude_highest_count: number;
   background_image: string | null;
   logo_image: string | null;
   scoring_mode: "score" | "vote";
@@ -32,6 +34,8 @@ export interface Category {
   score_value_type?: "integer" | "decimal" | "integer_decimal" | null;
   allow_duplicate_scores?: boolean | null;
   exclude_extreme_scores?: boolean | null;
+  exclude_lowest_count?: number | null;
+  exclude_highest_count?: number | null;
 }
 
 export interface Participant {
@@ -51,6 +55,7 @@ export interface JudgeInfo {
   token: string;
   submitted_categories: number[];
   submitted_scores: Record<number, Record<number, number>>;
+  submitted_votes: Record<number, number[]>;
 }
 
 export const useScoringStore = defineStore("scoring", () => {
@@ -74,6 +79,10 @@ export const useScoringStore = defineStore("scoring", () => {
 
   // 已提交的类别（从服务端获取 + 本次会话提交）
   const submittedCategories = ref<number[]>([]);
+
+  // 服务端已提交记录，切换设备后以此为准
+  const submittedScoreRecords = ref<Record<number, Record<number, number>>>({});
+  const submittedVoteRecords = ref<Record<number, number[]>>({});
 
   // 加载状态
   const loading = ref(false);
@@ -106,20 +115,24 @@ export const useScoringStore = defineStore("scoring", () => {
     }
     const data = await res.json();
     const submittedScores = normalizeSubmittedScores(data.submitted_scores);
+    const submittedVotes = normalizeSubmittedVotes(data.submitted_votes);
+    const submittedCategoryIds = normalizeCategoryIds(data.submitted_categories);
     judgeInfo.value = {
       judge_id: data.judge_id,
       judge_name: data.judge_name,
       token,
-      submitted_categories: data.submitted_categories,
+      submitted_categories: submittedCategoryIds,
       submitted_scores: submittedScores,
+      submitted_votes: submittedVotes,
     };
-    submittedCategories.value = Array.isArray(data.submitted_categories)
-      ? data.submitted_categories
-      : [];
+    submittedCategories.value = submittedCategoryIds;
+    submittedScoreRecords.value = submittedScores;
+    submittedVoteRecords.value = submittedVotes;
 
     if (restoreScores) {
       restoreLocalScores(token);
       mergeSubmittedScores(submittedScores);
+      mergeSubmittedVotes(submittedVotes);
     }
   }
 
@@ -260,6 +273,7 @@ export const useScoringStore = defineStore("scoring", () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "提交失败");
 
+    applySubmittedState(data);
     // 更新已提交类别
     if (!submittedCategories.value.includes(categoryId)) {
       submittedCategories.value.push(categoryId);
@@ -293,12 +307,20 @@ export const useScoringStore = defineStore("scoring", () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "提交失败");
 
+    applySubmittedState(data);
     // 更新已提交类别
     if (!submittedCategories.value.includes(categoryId)) {
       submittedCategories.value.push(categoryId);
     }
     saveLocalScores();
     return data;
+  }
+
+  function normalizeCategoryIds(raw: unknown): number[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((categoryId) => Number(categoryId))
+      .filter((categoryId) => Number.isInteger(categoryId));
   }
 
   function normalizeSubmittedScores(
@@ -340,6 +362,85 @@ export const useScoringStore = defineStore("scoring", () => {
     return normalized;
   }
 
+  function normalizeSubmittedVotes(raw: unknown): Record<number, number[]> {
+    if (!raw || typeof raw !== "object") return {};
+    const normalized: Record<number, number[]> = {};
+
+    Object.entries(raw as Record<string, unknown>).forEach(
+      ([categoryId, votes]) => {
+        const categoryKey = Number(categoryId);
+        if (!Number.isInteger(categoryKey) || !Array.isArray(votes)) return;
+
+        const voteItems = votes
+          .map((vote, index) => {
+            if (vote && typeof vote === "object") {
+              const entry = vote as Record<string, unknown>;
+              return {
+                participantId: Number(entry.participant_id),
+                order: Number(entry.vote_order ?? index),
+              };
+            }
+            return { participantId: Number(vote), order: index };
+          })
+          .filter((vote) => Number.isInteger(vote.participantId))
+          .sort((a, b) => a.order - b.order);
+
+        if (voteItems.length > 0) {
+          normalized[categoryKey] = voteItems.map((vote) => vote.participantId);
+        }
+      },
+    );
+
+    return normalized;
+  }
+
+  function mergeScoreRecords(
+    current: Record<number, Record<number, number>>,
+    incoming: Record<number, Record<number, number>>,
+  ) {
+    const merged: Record<number, Record<number, number>> = { ...current };
+    Object.entries(incoming).forEach(([categoryId, participantScores]) => {
+      const categoryKey = Number(categoryId);
+      merged[categoryKey] = {
+        ...(merged[categoryKey] || {}),
+        ...participantScores,
+      };
+    });
+    return merged;
+  }
+
+  function applySubmittedState(data: Record<string, unknown>) {
+    const categoryIds = normalizeCategoryIds(data.submitted_categories);
+    const serverScores = normalizeSubmittedScores(data.submitted_scores);
+    const serverVotes = normalizeSubmittedVotes(data.submitted_votes);
+
+    if (categoryIds.length > 0) {
+      submittedCategories.value = categoryIds;
+    }
+
+    if (Object.keys(serverScores).length > 0) {
+      submittedScoreRecords.value = mergeScoreRecords(
+        submittedScoreRecords.value,
+        serverScores,
+      );
+      if (judgeInfo.value) {
+        judgeInfo.value.submitted_scores = submittedScoreRecords.value;
+      }
+      mergeSubmittedScores(serverScores);
+    }
+
+    if (Object.keys(serverVotes).length > 0) {
+      submittedVoteRecords.value = {
+        ...submittedVoteRecords.value,
+        ...serverVotes,
+      };
+      if (judgeInfo.value) {
+        judgeInfo.value.submitted_votes = submittedVoteRecords.value;
+      }
+      mergeSubmittedVotes(serverVotes);
+    }
+  }
+
   function mergeSubmittedScores(
     submittedScores: Record<number, Record<number, number>>,
   ) {
@@ -352,6 +453,14 @@ export const useScoringStore = defineStore("scoring", () => {
         };
       },
     );
+    saveLocalScores();
+  }
+
+  function mergeSubmittedVotes(submittedVotes: Record<number, number[]>) {
+    Object.entries(submittedVotes).forEach(([categoryId, participantIds]) => {
+      const categoryKey = Number(categoryId);
+      localVotes.value[categoryKey] = [...participantIds];
+    });
     saveLocalScores();
   }
 
@@ -385,6 +494,19 @@ export const useScoringStore = defineStore("scoring", () => {
   // 判断类别是否已提交
   function isCategorySubmitted(categoryId: number): boolean {
     return submittedCategories.value.includes(categoryId);
+  }
+
+  function getSubmittedScore(
+    categoryId: number,
+    participantId: number,
+  ): number | undefined {
+    return submittedScoreRecords.value[categoryId]?.[participantId];
+  }
+
+  function isSubmittedVote(categoryId: number, participantId: number): boolean {
+    return (
+      submittedVoteRecords.value[categoryId]?.includes(participantId) ?? false
+    );
   }
 
   // 管理员验证
@@ -421,6 +543,8 @@ export const useScoringStore = defineStore("scoring", () => {
     localScores.value = {};
     localVotes.value = {};
     submittedCategories.value = [];
+    submittedScoreRecords.value = {};
+    submittedVoteRecords.value = {};
     error.value = null;
     isAdmin.value = false;
     adminPassword.value = "";
@@ -434,6 +558,8 @@ export const useScoringStore = defineStore("scoring", () => {
     localScores,
     localVotes,
     submittedCategories,
+    submittedScoreRecords,
+    submittedVoteRecords,
     loading,
     error,
     isAdmin,
@@ -454,6 +580,8 @@ export const useScoringStore = defineStore("scoring", () => {
     submitVotes,
     refreshJudgeState,
     isCategorySubmitted,
+    getSubmittedScore,
+    isSubmittedVote,
     verifyAdmin,
     reset,
   };

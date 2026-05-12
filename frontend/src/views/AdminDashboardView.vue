@@ -38,6 +38,8 @@ interface AdminConfig {
   allow_duplicate_scores: boolean;
   allow_scoring: boolean;
   exclude_extreme_scores: boolean;
+  exclude_lowest_count: number;
+  exclude_highest_count: number;
   background_image: string | null;
   admin_password: string;
   base_url: string;
@@ -253,6 +255,8 @@ function createDefaultConfig(): AdminConfig {
     allow_duplicate_scores: true,
     allow_scoring: true,
     exclude_extreme_scores: false,
+    exclude_lowest_count: 1,
+    exclude_highest_count: 1,
     background_image: null,
     admin_password: store.adminPassword || "admin123",
     base_url: "http://localhost:5173",
@@ -276,7 +280,7 @@ const adminQrUrl = computed(
 );
 const scoreRuleText = computed(
   () =>
-    `${configForm.score_value_type === "decimal" ? "仅小数" : configForm.score_value_type === "integer_decimal" ? "整数和小数" : "仅整数"}；${configForm.allow_duplicate_scores ? "允许重复分数" : "不允许重复分数"}；打分范围 ${configForm.score_min}-${configForm.score_max}；${configForm.exclude_extreme_scores ? "统计时去掉最高分和最低分（至少 3 位评委打分时生效）" : "统计时保留全部分数"}`,
+    `${configForm.score_value_type === "decimal" ? "仅小数" : configForm.score_value_type === "integer_decimal" ? "整数和小数" : "仅整数"}；${configForm.allow_duplicate_scores ? "允许重复分数" : "不允许重复分数"}；打分范围 ${configForm.score_min}-${configForm.score_max}；${configForm.exclude_extreme_scores ? `统计时去掉最低 ${configForm.exclude_lowest_count} 个、最高 ${configForm.exclude_highest_count} 个` : "统计时保留全部分数"}`,
 );
 
 function loadStoredJudgeQrPattern() {
@@ -475,6 +479,11 @@ async function saveConfig() {
     formData.append(
       "exclude_extreme_scores",
       String(configForm.exclude_extreme_scores),
+    );
+    formData.append("exclude_lowest_count", String(configForm.exclude_lowest_count));
+    formData.append(
+      "exclude_highest_count",
+      String(configForm.exclude_highest_count),
     );
     formData.append("admin_password", configForm.admin_password);
     formData.append("base_url", configForm.base_url);

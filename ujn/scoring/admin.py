@@ -13,6 +13,8 @@ class SiteConfigAdmin(admin.ModelAdmin):
         'score_max',
         'allow_scoring',
         'exclude_extreme_scores',
+        'exclude_lowest_count',
+        'exclude_highest_count',
         'admin_url_link',
     )
     readonly_fields = ('admin_url_link',)
@@ -24,7 +26,14 @@ class SiteConfigAdmin(admin.ModelAdmin):
             'fields': ('background_image', 'logo_image')
         }),
         ('评分设置', {
-            'fields': ('score_min', 'score_max', 'allow_scoring', 'exclude_extreme_scores')
+            'fields': (
+                'score_min',
+                'score_max',
+                'allow_scoring',
+                'exclude_extreme_scores',
+                'exclude_lowest_count',
+                'exclude_highest_count',
+            )
         }),
         ('字段配置（手动输入）', {
             'fields': (
