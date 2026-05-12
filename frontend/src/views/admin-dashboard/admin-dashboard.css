@@ -806,6 +806,10 @@ to {box-shadow: 0 6px 20px rgba(255, 183, 0, 0.6);}}
 
 .admin-dashboard .col-score {width: 100px;}
 
+.admin-dashboard .col-dropped {width: 110px;
+  color: var(--text-secondary);
+  font-size: 13px;}
+
 .admin-dashboard .col-count {width: 90px;
   color: var(--text-secondary);
   font-size: 13px;}

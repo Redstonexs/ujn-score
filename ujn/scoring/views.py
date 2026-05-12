@@ -201,6 +201,11 @@ def format_score_value(value):
     return float(decimal_value)
 
 
+def format_score_list(values):
+    formatted = [str(format_score_value(value)) for value in values]
+    return '、'.join(formatted)
+
+
 def judge_display_name(judge_or_id):
     if hasattr(judge_or_id, 'name'):
         return judge_or_id.name
@@ -939,7 +944,11 @@ def export_excel(request):
                 # 打分模式
                 ws.append(['统计规则', format_category_rule_text(category, config)])
                 ws.append([])
-                ws.append(['排名', '选手序号', '选手', '学院', '统计总分', '统计平均分', '原始总分', '原始平均分', '原始评分数', '有效评分数', '是否去掉极值'])
+                ws.append([
+                    '排名', '选手序号', '选手', '学院', '统计总分', '统计平均分',
+                    '原始总分', '原始平均分', '评委数', '统计计分数',
+                    '去掉最低分', '去掉最高分', '是否去掉极值',
+                ])
 
                 ranking_stats = []
                 # 获取类别的统计规则设置
@@ -977,6 +986,8 @@ def export_excel(request):
                         stat['raw_average'],
                         stat['count'],
                         stat['effective_count'],
+                        format_score_list(stat['dropped_lows']),
+                        format_score_list(stat['dropped_highs']),
                         '是' if stat['rule_applied'] else '否',
                     ])
 

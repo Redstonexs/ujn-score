@@ -21,6 +21,16 @@ const {
   sseStatus,
   toggleSort,
 } = props.ctx;
+
+function formatDroppedScores(stat: any, field: "dropped_lows" | "dropped_highs") {
+  const values = stat?.[field] || [];
+  return values.length ? values.join("、") : "-";
+}
+
+function getJudgeCountText(stat: any) {
+  if (!stat) return "-";
+  return `${stat.count}/${scoresData.value?.judges?.length || stat.count}`;
+}
 </script>
 
 <template>
@@ -405,6 +415,8 @@ const {
                 <th class="col-score">统计平均分</th>
                 <th class="col-score">原始总分</th>
                 <th class="col-score">原始平均分</th>
+                <th class="col-dropped">去掉最低分</th>
+                <th class="col-dropped">去掉最高分</th>
                 <th class="col-count">评委数</th>
               </tr>
             </thead>
@@ -541,13 +553,28 @@ const {
                     >
                     <span v-else>-</span>
                   </td>
+                  <td class="col-dropped">
+                    {{
+                      formatDroppedScores(
+                        getParticipantStat(category.id, participant.id),
+                        "dropped_lows",
+                      )
+                    }}
+                  </td>
+                  <td class="col-dropped">
+                    {{
+                      formatDroppedScores(
+                        getParticipantStat(category.id, participant.id),
+                        "dropped_highs",
+                      )
+                    }}
+                  </td>
                   <td class="col-count">
                     <span v-if="getParticipantStat(category.id, participant.id)"
                       >{{
-                        getParticipantStat(category.id, participant.id)
-                          ?.effective_count
-                      }}/{{
-                        getParticipantStat(category.id, participant.id)?.count
+                        getJudgeCountText(
+                          getParticipantStat(category.id, participant.id),
+                        )
                       }}</span
                     >
                     <span v-else>-</span>
