@@ -18,7 +18,7 @@
 - `frontend/src/config/api.ts` intentionally keeps `API_BASE_URL` empty in dev and prod; dev traffic relies on Vite proxies for `/api` and `/media`, prod expects same-origin reverse proxying.
 - In `frontend/vite.config.ts`, the SSE proxy for `/api/admin/scores/stream/` must stay before the generic `/api` proxy.
 - `ujn/manage.py` loads `.env`; do not commit real `.env` files. Use `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, and `CLEAR_PASSWORD`.
-- `settings.py` currently always uses SQLite at `ujn/db.sqlite3`; MySQL env vars in `.env.example` are not active because the MySQL `DATABASES` block is commented out.
+- `settings.py` uses SQLite at `ujn/db.sqlite3` by default; set `USE_MYSQL=1` plus `MYSQL_*` env vars to use an external MySQL-compatible database.
 - `SiteConfig.admin_password` is intentionally plaintext because the frontend admin panel displays/edits it; do not silently replace it with Django password hashing without updating that flow.
 
 ## API And Data Flow

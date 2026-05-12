@@ -96,29 +96,29 @@ WSGI_APPLICATION = 'scoring_system.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# USE_MYSQL = os.getenv('USE_MYSQL', '').strip() == '1'
+USE_MYSQL = os.getenv('USE_MYSQL', '').strip().lower() in ('1', 'true', 'yes')
 
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': os.getenv('MYSQL_DATABASE', 'ujn'),
-#         'USER': os.getenv('MYSQL_USER', 'ujn'),
-#         'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'ujn2026'),
-#         'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
-#         'PORT': os.getenv('MYSQL_PORT', '3307'),
-#         'OPTIONS': {
-#             'charset': 'utf8mb4',
-#         },
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if USE_MYSQL:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.getenv('MYSQL_DATABASE', 'ujn'),
+            'USER': os.getenv('MYSQL_USER', 'ujn'),
+            'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'ujn2026'),
+            'HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
+            'PORT': os.getenv('MYSQL_PORT', '3307'),
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -163,4 +163,3 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-

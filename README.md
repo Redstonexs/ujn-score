@@ -120,168 +120,108 @@ npm run dev
 - 前端管理面板默认密码：`admin123`
 - Django Admin 密码：初始化 `createsuperuser` 时设置
 
-## 生产环境部署
+## Docker 镜像部署
 
-### 部署前准备
+推荐使用本仓库 GitHub Action 发布到 DockerHub 的镜像运行，不需要在服务器上安装 Python、Node 或手动配置 Nginx。
 
-1. **服务器要求**：
-   - Python 3.10+
-   - Node.js 18+
-   - Nginx（推荐）或其他 Web 服务器
-   - 域名（可选，用于生成二维码链接）
+镜像包含：
 
-2. **修改配置**：
-   - 后端：`ujn/scoring_system/settings.py` 中修改 `ALLOWED_HOSTS`
-   - 前端：创建 `frontend/.env.production` 文件，设置生产环境 API 地址
+- `frontend/dist` 前端静态文件
+- Nginx，监听容器内 `8080`
+- Django + Gunicorn 后端，Nginx 反代 `/api/`、`/admin/`、`/media/`
+- 启动时自动执行 `collectstatic`，默认执行 `python manage.py migrate --noinput`
 
-### 部署步骤
+将下面示例里的 `yourname/ujn-score:latest` 替换为本仓库发布的 DockerHub 镜像名。若使用默认 workflow，镜像名通常是 `<DOCKERHUB_USERNAME>/ujn-score:latest`。
 
-#### 1. 后端部署
+### 使用本机已部署的 MySQL 数据库
 
-```bash
-cd ujn
+容器内的 `127.0.0.1` 指向容器自己，不是宿主机。连接宿主机上的 MySQL 时：
 
-# 安装依赖
-pip install -r requirements.txt
+- Docker Desktop：`MYSQL_HOST=host.docker.internal`
+- Linux Docker：额外添加 `--add-host=host.docker.internal:host-gateway`
+- 如果数据库是另一个 Docker 容器，把两个容器放进同一 Docker network，并把 `MYSQL_HOST` 设置为数据库服务名
 
-# 收集静态文件
-python manage.py collectstatic --noinput
-
-# 执行数据库迁移
-python manage.py migrate
-
-# 创建管理员账号（如未创建）
-python manage.py createsuperuser
-
-# 使用 Gunicorn 启动（生产环境推荐）
-pip install gunicorn
-gunicorn scoring_system.wsgi:application -b 127.0.0.1:8000
-```
-
-#### 2. 前端构建
+运行示例：
 
 ```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 构建生产版本
-npm run build
-
-# 构建后的文件在 dist/ 目录，可部署到 Nginx 或静态文件服务器
+docker run -d --name ujn-score \
+  --add-host=host.docker.internal:host-gateway \
+  -p 8080:8080 \
+  -e DJANGO_SECRET_KEY=change-me \
+  -e DJANGO_DEBUG=False \
+  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com \
+  -e CORS_ALLOWED_ORIGINS=https://your-domain.com \
+  -e USE_MYSQL=1 \
+  -e MYSQL_HOST=host.docker.internal \
+  -e MYSQL_PORT=3306 \
+  -e MYSQL_DATABASE=ujn \
+  -e MYSQL_USER=ujn \
+  -e MYSQL_PASSWORD=your-db-password \
+  -e CLEAR_PASSWORD=jndx \
+  -v ujn-score-media:/app/ujn/media \
+  yourname/ujn-score:latest
 ```
 
-#### 3. Nginx 配置示例
+本机 MySQL 需要允许 Docker 容器连接：确保 MySQL 监听非 `127.0.0.1` 的地址，并给 `MYSQL_USER` 授权来自 Docker 网段或 `%` 的访问权限。
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    # 前端静态文件
-    location / {
-        root /path/to/frontend/dist;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # 后端 API 代理
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # 媒体文件（上传的背景图、Logo 等）
-    location /media/ {
-        alias /path/to/ujn/media/;
-    }
-
-    # 静态文件（Django admin 等）
-    location /static/ {
-        alias /path/to/ujn/static/;
-    }
-}
-```
-
-#### 4. 使用 Systemd 管理后端服务
-
-创建 `/etc/systemd/system/scoring-backend.service`：
-
-```ini
-[Unit]
-Description=Scoring System Backend
-After=network.target
-
-[Service]
-User=www-data
-Group=www-data
-WorkingDirectory=/path/to/ujn
-ExecStart=/path/to/venv/bin/gunicorn scoring_system.wsgi:application -b 127.0.0.1:8000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启动服务：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable scoring-backend
-sudo systemctl start scoring-backend
-```
-
-#### 5. 配置前端基础 URL
-
-部署完成后，访问管理后台 `/manage`，在「基础设置」中修改：
-
-- **前端基础 URL**：设置为你的实际域名，如 `https://your-domain.com`
-- **活动标题**：修改为实际活动名称
-- **背景图/Logo**：上传活动相关图片
-
-### GitHub Actions 自动构建并发布 Release
-
-仓库已提供自动化工作流：`.github/workflows/build-and-release.yml`，用于构建前端并与后端打包发布 Release。
-
-- 触发方式：
-  - 推送标签（`v*`，如 `v1.0.0`）后自动执行
-  - 手动触发 `Build Frontend and Release Package`，并输入目标标签
-- 工作流行为：
-  - 构建 `frontend/dist`
-  - 将 `frontend/dist` 与 `ujn/` 后端目录一起打包
-  - 自动上传 `tar.gz` 与 `zip` 两个压缩包到对应 GitHub Release（若该标签 Release 不存在，会自动创建）
-
-### 使用 Docker 部署（可选）
-
-项目支持 Docker 部署，可参考以下 `docker-compose.yml`：
+### docker compose 示例
 
 ```yaml
-version: "3.8"
-
 services:
-  backend:
-    build: ./ujn
-    volumes:
-      - ./ujn/media:/app/media
-    environment:
-      - DEBUG=False
-      - ALLOWED_HOSTS=your-domain.com
-
-  frontend:
-    build: ./frontend
+  app:
+    image: yourname/ujn-score:latest
+    container_name: ujn-score
     ports:
-      - "80:80"
-    depends_on:
-      - backend
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DJANGO_SECRET_KEY: change-me
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,your-domain.com
+      CORS_ALLOWED_ORIGINS: https://your-domain.com
+      USE_MYSQL: "1"
+      MYSQL_HOST: host.docker.internal
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ujn
+      MYSQL_USER: ujn
+      MYSQL_PASSWORD: your-db-password
+      CLEAR_PASSWORD: jndx
+    volumes:
+      - ujn-score-media:/app/ujn/media
+    restart: unless-stopped
+
+volumes:
+  ujn-score-media:
 ```
+
+### 本地 SQLite 临时运行
+
+不设置 `USE_MYSQL=1` 时会使用容器内 SQLite，适合快速试用，不建议用于生产。容器删除后数据库会丢失，生产请使用外部 MySQL 并备份数据库和 `ujn-score-media` 卷。
+
+```bash
+docker run -d --name ujn-score -p 8080:8080 \
+  -e DJANGO_SECRET_KEY=change-me \
+  -e DJANGO_DEBUG=False \
+  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+  -v ujn-score-media:/app/ujn/media \
+  yourname/ujn-score:latest
+```
+
+### DockerHub 镜像自动发布
+
+`.github/workflows/dockerhub.yml` 会在推送 `main`、推送版本标签或手动触发时构建 Docker 镜像并推送到 DockerHub。
+
+需要在 GitHub 仓库配置：
+
+- Secret `DOCKERHUB_USERNAME`：DockerHub 用户名
+- Secret `DOCKERHUB_TOKEN`：DockerHub Access Token
+- 可选 Variable `DOCKERHUB_IMAGE`：完整镜像名，例如 `yourname/ujn-score`；未设置时默认使用 `<DOCKERHUB_USERNAME>/ujn-score`
 
 ## 其他说明
 
-- **统计规则**："去掉最高分和最低分"只有在某个选手收到 **至少 3 个评委评分** 时才会生效
-- **清空评分密码**：默认清空密码为 `jndx`，可在后端代码中修改
+- **统计规则**：开启极值剔除时，评分数必须大于“去掉最低分数量 + 去掉最高分数量”才会生效
+- **清空评分密码**：默认清空密码为 `jndx`，可通过环境变量 `CLEAR_PASSWORD` 修改
 - **评委二维码命名规则**：批量导出时支持自定义命名规则，可用占位符包括：
   - `{index}` - 序号
   - `{judge_id}` - 评委 ID
@@ -290,24 +230,4 @@ services:
   - `{site_name}` - 活动标题
   - `{token}` - 评委令牌
 - **Excel 导入**：如果你修改了 Excel 字段名，建议先重新下载模板，再把数据填进去导入
-- **数据备份**：生产环境建议定期备份 MySQL 数据库 和 `ujn/media/` 目录
-
-### DockerHub 镜像自动发布
-
-仓库新增 `.github/workflows/dockerhub.yml`，推送 `main`、推送版本标签或手动触发时会构建 Docker 镜像并推送到 DockerHub。
-
-需要在 GitHub 仓库配置：
-
-- Secret `DOCKERHUB_USERNAME`：DockerHub 用户名
-- Secret `DOCKERHUB_TOKEN`：DockerHub Access Token
-- 可选 Variable `DOCKERHUB_IMAGE`：完整镜像名，例如 `yourname/ujn-score`；未设置时默认使用 `<DOCKERHUB_USERNAME>/ujn-score`
-
-镜像内置前端静态文件、Nginx 反向代理和 Django/Gunicorn 后端，容器监听 `8080`。运行示例：
-
-```bash
-docker run -p 8080:8080 \
-  -e DJANGO_SECRET_KEY=change-me \
-  -e DJANGO_DEBUG=False \
-  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
-  yourname/ujn-score:latest
-```
+- **数据备份**：生产环境建议定期备份 MySQL 数据库和 Docker 卷 `ujn-score-media`
